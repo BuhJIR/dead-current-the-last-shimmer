@@ -506,9 +506,14 @@ var deferredDestroy = [];  /* body references to destroy */
 var CLOUD_CELL = 12;      /* px на ячейку симуляции (экранные) */
 var gw = 0, gh = 0;       /* размеры сетки */
 var tw = 0;               /* флаг готовности (ненулевой = сетка создана) */
-var cloudDownscale = 2;   /* уменьшение оффскрина рендера */
+var cloudDownscale = 2;   /* уменьшение оффскрина рендера (nearest-upscale → пиксельность) */
 var _simTime = 0;
 var _psiGrid = null;      /* потенциал скорости (переиспользуемый буфер) */
+/* Детализация/зерно рендера — грубая симуляция + мелкий шум = чёткая гранулярность */
+var DETAIL_AMP = 0.30;    /* сила мелкой структуры внутри облаков */
+var DETAIL_FREQ = 0.16;   /* частота зерна (больше → мельче) */
+var DITHER_AMP = 0.07;    /* упорядоченный дизеринг краёв (пиксельность) */
+var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5]; /* 4×4 Bayer /16 */
 
 var cloudLayers = [
   { name:'deck', den:null, tmp:null, enabled:true, cheap:false,
@@ -758,7 +763,20 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
         var sx = ox * ds;
         var hVal = sampleGrid(den, sx * invCell, gy);
 
-        /* ── Красный луч маяка: прозрачность в центре + красная кромка ── */
+        /* Мелкая структура, ползущая ВМЕСТЕ с облаком (высокочастотно → зерно, не полосы),
+           модулируется плотностью, чтобы не «шуметь» в чистом небе. */
+        var pres = hVal < 0 ? 0 : (hVal > 1 ? 1 : hVal);
+        if (pres > 0.02) {
+          var dux = sx - layer.driftX * _simTime;
+          var duy = sy - layer.driftY * _simTime;
+          var det = _smoothNoise(dux * DETAIL_FREQ + layer.seed0, duy * DETAIL_FREQ) * 0.67
+                  + _smoothNoise(dux * DETAIL_FREQ * 2.7 + 40.0, duy * DETAIL_FREQ * 2.7) * 0.33;
+          hVal += (det - 0.5) * DETAIL_AMP * pres;
+        }
+        /* упорядоченный дизеринг — гранулярные пиксельные края */
+        hVal += (_BAYER[(oy & 3) * 4 + (ox & 3)] * 0.0625 - 0.5) * DITHER_AMP;
+
+        /* ── Красный луч маяка: прозрачность в центре + красная заливка/кромка ── */
         var redRim = 0;
         if (beamActive) {
           var dxB = sx - lhSx;
@@ -780,8 +798,9 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
             if (inBeam > 0) {
               if (inBeam > 1) inBeam = 1;
               var clear = inBeam * beamPen;
-              hVal -= clear * 0.62;
-              redRim = clear * (1 - clear) * 4 * nightBright * beamPen;
+              hVal -= clear * 0.55;   /* чуть меньше «съедаем» — остаётся облако под покраску */
+              /* эффектный прожектор: яркая кромка + мягкая красная заливка вдоль всего луча */
+              redRim = (clear * (1 - clear) * 5.0 + clear * 0.4) * nightBright * beamPen;
             }
           }
         }
@@ -792,9 +811,9 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
 
         if (redRim > 0 && alpha > 0) {
           if (redRim > 1) redRim = 1;
-          cr = (cr * (1 - redRim * 0.4) + 215 * redRim) | 0; if (cr > 255) cr = 255;
-          cg = (cg * (1 - redRim * 0.75)) | 0;
-          cb = (cb * (1 - redRim * 0.6)) | 0;
+          cr = (cr * (1 - redRim * 0.35) + 235 * redRim) | 0; if (cr > 255) cr = 255;
+          cg = (cg * (1 - redRim * 0.8)) | 0;
+          cb = (cb * (1 - redRim * 0.65)) | 0;
         }
 
         var layerAlpha = (alpha * la255 / 255) | 0;
@@ -813,7 +832,7 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
   }
   _cloudCtx2.putImageData(_cloudImgData, 0, 0);
   var prevSmooth = destCtx.imageSmoothingEnabled;
-  destCtx.imageSmoothingEnabled = true;
+  destCtx.imageSmoothingEnabled = false; /* nearest-upscale → чёткие пиксели вместо мыла */
   destCtx.drawImage(_cloudCvs, 0, 0, ow, oh, 0, 0, w, h);
   destCtx.imageSmoothingEnabled = prevSmooth;
 }
@@ -1760,30 +1779,43 @@ function addCrater(wx, wy, maxRadius, power, alt) {
 }
 
 function spawnLayerCrater(layerIdx, sx, sy, maxRadius, strength) {
-  /* Дыра выедается прямо в поле плотности слоя; течение потом само её затягивает. */
+  /* Дыра выедается в поле плотности и держится ~life секунд, дрейфуя с ветром слоя,
+     затем плавно затягивается течением — след от выстрела виден заметно дольше. */
   var rGrid = (maxRadius * scale) / CLOUD_CELL * (0.7 + strength * 0.5);
   craters.push({
     layerIdx: layerIdx,
-    gx: sx / CLOUD_CELL,           /* положение в ячейках сетки (в момент взрыва) */
+    gx: sx / CLOUD_CELL,
     gy: sy / CLOUD_CELL,
     r: 0,
     maxR: rGrid,
-    growth: rGrid * 3.4,           /* скорость раскрытия дыры (ячеек/с) */
-    strength: 0.55 + strength * 0.5
+    growth: rGrid * 4.5,               /* быстро раскрывается */
+    strength: 0.6 + strength * 0.4,
+    age: 0,
+    life: 1.8 + strength * 1.6         /* сколько держится дыра, сек */
   });
 }
 
 function updateCraters(dt) {
   if (tw === 0) return;
+  var invCell = 1 / CLOUD_CELL;
   for (var ci = craters.length - 1; ci >= 0; ci--) {
     var c = craters[ci];
     var layer = cloudLayers[c.layerIdx];
     if (!layer || !layer.enabled) { craters.splice(ci, 1); continue; }
 
-    /* растёт, пока не дожгло до maxR; затем убираем — дыра уже в поле и её сносит/затягивает */
-    var done = c.r >= c.maxR;
-    if (!done) c.r = Math.min(c.r + c.growth * dt, c.maxR);
+    c.age += dt;
+    if (c.age >= c.life) { craters.splice(ci, 1); continue; }
+    c.r = Math.min(c.r + c.growth * dt, c.maxR);
+    /* дыра дрейфует вместе с потоком слоя */
+    c.gx += layer.driftX * dt * invCell;
+    c.gy += layer.driftY * dt * invCell;
+    if (c.gx < -c.maxR || c.gx > gw + c.maxR || c.gy < -c.maxR || c.gy > gh + c.maxR) {
+      craters.splice(ci, 1); continue;
+    }
 
+    /* сила выедания спадает к концу жизни → плавное «зарастание» */
+    var fade = 1 - c.age / c.life;
+    var carve = c.strength * (0.25 + 0.75 * fade);
     var rad = c.r;
     var den = layer.den;
     var rC = Math.ceil(rad) + 1;
@@ -1796,11 +1828,10 @@ function updateCraters(dt) {
         if (d < rad) {
           var f = 1 - d / rad; f *= f;
           var idx = j * gw + i;
-          den[idx] -= den[idx] * c.strength * f; /* выедаем плотность */
+          den[idx] -= den[idx] * carve * f;
         }
       }
     }
-    if (done) craters.splice(ci, 1);
   }
 }
 function updateLights(dt) {
@@ -3118,7 +3149,7 @@ function drawLighthouse() {
     var scanAngle = 0.25;
     var scanLen = r * CFG.SCANNER_RANGE_MULT * 3.4 * reachLh;
     var t = state.basePulse;
-    var beamAlpha = (isNightLh ? 0.075 : 0.045) + Math.sin(t) * 0.02;
+    var beamAlpha = (isNightLh ? 0.12 : 0.075) + Math.sin(t) * 0.025;
 
     for (var bi = 0; bi < 2; bi++) {
       var bAngle = beamRot + bi * PI;
@@ -3128,13 +3159,31 @@ function drawLighthouse() {
       var by2 = Math.sin(bAngle + scanAngle) * scanLen;
 
       var bg = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, scanLen);
-      bg.addColorStop(0, 'rgba(255,23,68,' + beamAlpha + ')');
+      bg.addColorStop(0, 'rgba(255,40,74,' + beamAlpha + ')');
+      bg.addColorStop(0.55, 'rgba(255,23,68,' + (beamAlpha * 0.5) + ')');
       bg.addColorStop(1, 'rgba(255,23,68,0)');
       ctx.fillStyle = bg;
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.lineTo(sx + bx1, sy + by1);
       ctx.lineTo(sx + bx2, sy + by2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /* Яркое горячее ядро у основания луча — «прожектор» смотрится дороже */
+    var coreLen = scanLen * 0.34;
+    var coreA = 0.28 * scanAngle;
+    for (var bj = 0; bj < 2; bj++) {
+      var ca = beamRot + bj * PI;
+      var cg2 = ctx.createRadialGradient(sx, sy, r * 0.3, sx, sy, coreLen);
+      cg2.addColorStop(0, 'rgba(255,120,140,' + (beamAlpha * 1.6) + ')');
+      cg2.addColorStop(1, 'rgba(255,40,74,0)');
+      ctx.fillStyle = cg2;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(ca - coreA) * coreLen, sy + Math.sin(ca - coreA) * coreLen);
+      ctx.lineTo(sx + Math.cos(ca + coreA) * coreLen, sy + Math.sin(ca + coreA) * coreLen);
       ctx.closePath();
       ctx.fill();
     }
