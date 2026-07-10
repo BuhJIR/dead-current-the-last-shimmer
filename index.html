@@ -1,0 +1,4327 @@
+<!DOCTYPE html><html lang="ru"><head><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;"><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;"><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;"><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Lighthouse Defense</title>
+<script src="https://cdn.jsdelivr.net/npm/planck-js@0.3.28/dist/planck.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&amp;family=Orbitron:wght@700;900&amp;display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050810;
+  --text: #e8eaed;
+  --cyan: #00e5ff;
+  --red: #ff1744;
+  --gold: #ffab00;
+  --panel: rgba(5,8,16,0.94);
+  --border: rgba(0,229,255,0.15);
+}
+.dark {
+  --bg: #050810;
+  --text: #e8eaed;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { width:100%; height:100%; overflow:hidden; background:var(--bg); font-family:'Chakra Petch',sans-serif; color:var(--text); touch-action:none; user-select:none; }
+canvas { display:block; width:100%; height:100%; }
+#hud { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:center; padding:6px 8px; pointer-events:none; z-index:10; font-size:11px; font-weight:900; font-family:Consolas,'Courier New','Lucida Console',monospace; letter-spacing:1px; }
+#hud > div {
+  --primary: #0a0a0a; --shadow-primary: #00e5ff; --color: #0ff; --border: 2px; --stripe: #ff0000;
+  --clip: polygon(5% 0, 95% 0, 100% 25%, 95% 100%, 5% 100%, 0 25%);
+  background:transparent; border:none; padding:6px 14px; pointer-events:auto; position:relative;
+  color:var(--color); text-transform:uppercase; letter-spacing:2px;
+  text-shadow: 0 0 4px var(--color);
+}
+#hud > div:after, #hud > div:before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; clip-path: var(--clip); z-index: -1; }
+#hud > div:before {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--stripe) 0px, var(--stripe) 2px,
+    transparent 2px, transparent 6px
+  );
+  transform: translate(0, 0); opacity:0.25;
+  top:-3px; left:-3px; right:-3px; bottom:-3px;
+}
+#hud > div:after { background: var(--primary); }
+.hud-lives { --color: #ff3d00; --stripe: #ff0000; }
+.hud-energy { --color: #cc8800; --stripe: #ff6600; }
+.hud-wave { --color: #00cc99; --stripe: #00aa66; }
+.hud-score { --color: #889988; --stripe: #666; }
+#ammo-bar { position:fixed; right:12px; top:50%; transform:translateY(-50%); display:none; flex-direction:column; gap:6px; z-index:10; } /* ВРЕМЕННО СКРЫТО */
+.ammo-btn {
+  --primary: #0a0a0a; --color: #888; --stripe: #333;
+  --clip: polygon(12% 0, 88% 0, 100% 12%, 100% 88%, 88% 100%, 12% 100%, 0 88%, 0 12%);
+  width:48px; height:48px; background:transparent; border:none;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s; font-size:20px;
+  position:relative;
+}
+.ammo-btn:after, .ammo-btn:before { content: ''; position: absolute; clip-path: var(--clip); z-index: -1; }
+.ammo-btn:before {
+  top:-3px; left:-3px; right:-3px; bottom:-3px;
+  background: repeating-linear-gradient(-45deg, var(--stripe) 0px, var(--stripe) 2px, transparent 2px, transparent 6px);
+  opacity:0.3;
+}
+.ammo-btn:after { top:0; left:0; right:0; bottom:0; background: var(--primary); }
+.ammo-btn.active { --stripe: #00e5ff; --primary: #001a1a; }
+.ammo-btn.active:before { opacity:0.6; }
+.ammo-btn.locked { opacity:0.35; cursor:default; }
+.ammo-btn:not(.locked):hover { --stripe: #666; }
+.ammo-btn canvas { display:block; }
+#shop-btn {
+  --primary: #ffab00; --shadow-primary: #ff3d00; --color: #fff; --border: 3px; --stripe: #ff3d00;
+  --clip: polygon(10% 0, 90% 0, 100% 30%, 95% 100%, 5% 100%, 0 30%);
+  position:fixed; bottom:12px; right:12px; z-index:10;
+  color: var(--color); text-transform: uppercase; font-size: 11px; letter-spacing: 2px;
+  font-weight: 900; padding:10px 16px; text-align: center; cursor: pointer;
+  transition: 0.2s; font-family: Consolas,'Courier New','Lucida Console',monospace;
+}
+#shop-btn:after, #shop-btn:before { content: ''; position: absolute; clip-path: var(--clip); z-index: -1; }
+#shop-btn:before {
+  top:-4px; left:-4px; right:-4px; bottom:-4px;
+  background: repeating-linear-gradient(-45deg, var(--stripe) 0px, var(--stripe) 3px, transparent 3px, transparent 8px);
+  opacity:0.4;
+}
+#shop-btn:after { top:0; left:0; right:0; bottom:0; background: var(--primary); }
+#shop-btn:hover { --primary: #ffd000; }
+#shop-overlay { position:fixed; inset:0; z-index:100; display:none; background:rgba(0,0,0,0.7); }
+#shop-overlay.open { display:flex; align-items:center; justify-content:center; }
+#shop-panel { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:20px; width:92%; max-width:380px; max-height:80vh; overflow-y:auto; }
+#shop-panel h2 { font-family:'Orbitron',sans-serif; font-size:18px; color:var(--gold); margin-bottom:14px; text-align:center; }
+.upgrade-item { display:flex; align-items:center; justify-content:space-between; padding:10px; margin-bottom:8px; border:1px solid var(--border); border-radius:10px; transition:all .2s; }
+.upgrade-item:hover { border-color:var(--cyan); }
+.upgrade-info { flex:1; }
+.upgrade-name { font-weight:600; font-size:13px; }
+.upgrade-desc { font-size:11px; color:rgba(232,234,237,0.5); margin-top:2px; }
+.upgrade-cost-btn { background:rgba(255,171,0,0.15); border:1px solid var(--gold); border-radius:8px; padding:6px 12px; color:var(--gold); font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:12px; cursor:pointer; white-space:nowrap; transition:all .2s; }
+.upgrade-cost-btn:hover { background:rgba(255,171,0,0.3); }
+.upgrade-cost-btn.maxed { background:rgba(0,229,255,0.1); border-color:var(--cyan); color:var(--cyan); cursor:default; }
+.shop-section { margin-bottom:14px; }
+.shop-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:rgba(232,234,237,0.35); margin-bottom:8px; padding-left:2px; }
+.colony-card { background:rgba(0,229,255,0.04); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:10px; }
+.colony-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.colony-icon { font-size:28px; }
+.colony-name { font-family:'Orbitron',sans-serif; font-size:15px; font-weight:700; color:var(--cyan); }
+.colony-tier-label { font-size:10px; color:rgba(232,234,237,0.4); font-weight:600; }
+.colony-bonuses { font-size:11px; color:rgba(232,234,237,0.5); line-height:1.6; margin-bottom:8px; }
+.colony-bonuses span { color:var(--cyan); }
+.colony-progress { display:flex; gap:4px; margin-bottom:8px; }
+.colony-dot { width:100%; height:4px; border-radius:2px; background:rgba(255,255,255,0.08); }
+.colony-dot.filled { background:var(--cyan); }
+.colony-dot.current { background:var(--gold); box-shadow:0 0 6px rgba(255,171,0,0.4); }
+.evolve-btn { width:100%; padding:8px; border:1px solid var(--gold); background:rgba(255,171,0,0.08); border-radius:8px; color:var(--gold); font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:all .2s; }
+.evolve-btn:hover { background:rgba(255,171,0,0.2); }
+.evolve-btn.maxed { border-color:var(--cyan); color:var(--cyan); background:rgba(0,229,255,0.06); cursor:default; }
+.perk-item { display:flex; align-items:center; gap:10px; padding:10px; margin-bottom:6px; border:1px solid var(--border); border-radius:10px; transition:all .2s; }
+.perk-item:hover { border-color:rgba(0,229,255,0.3); }
+.perk-item.locked-tier { opacity:0.3; pointer-events:none; }
+.perk-icon { font-size:22px; width:32px; text-align:center; flex-shrink:0; }
+.perk-info { flex:1; min-width:0; }
+.perk-name { font-weight:600; font-size:12px; display:flex; align-items:center; gap:6px; }
+.perk-lvl { font-size:10px; color:var(--cyan); font-weight:700; }
+.perk-desc { font-size:10px; color:rgba(232,234,237,0.45); margin-top:2px; line-height:1.4; }
+.perk-tier-req { font-size:9px; color:rgba(255,171,0,0.5); margin-top:1px; }
+.perk-buy { flex-shrink:0; padding:5px 10px; border:1px solid var(--gold); background:rgba(255,171,0,0.1); border-radius:7px; color:var(--gold); font-family:'Chakra Petch',sans-serif; font-weight:700; font-size:11px; cursor:pointer; transition:all .2s; }
+.perk-buy:hover { background:rgba(255,171,0,0.25); }
+.perk-buy.maxed { border-color:rgba(0,229,255,0.3); color:rgba(0,229,255,0.6); background:rgba(0,229,255,0.05); cursor:default; }
+#shop-close { display:block; margin:10px auto 0; padding:8px 30px; background:transparent; border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:var(--text); font-family:'Chakra Petch',sans-serif; font-size:14px; cursor:pointer; }
+#wave-text { position:fixed; top:72px; left:50%; transform:translateX(-50%); z-index:50; font-family:'Orbitron',sans-serif; font-size:22px; font-weight:900; color:var(--cyan); text-shadow:0 0 30px rgba(0,229,255,0.6); pointer-events:none; opacity:0; transition:opacity .4s; white-space:nowrap; }
+#game-over-overlay { position:fixed; inset:0; z-index:200; display:none; background:rgba(8,12,20,0.9); align-items:center; justify-content:center; flex-direction:column; }
+#game-over-overlay.open { display:flex; }
+#game-over-overlay h1 { font-family:'Orbitron',sans-serif; font-size:36px; color:var(--red); margin-bottom:10px; }
+#game-over-overlay p { font-size:16px; margin-bottom:20px; color:rgba(232,234,237,0.7); }
+#restart-btn { padding:12px 36px; border:2px solid var(--cyan); background:transparent; color:var(--cyan); font-family:'Orbitron',sans-serif; font-size:16px; font-weight:700; border-radius:12px; cursor:pointer; transition:all .2s; }
+#restart-btn:hover { background:rgba(0,229,255,0.15); }
+#tut-prompt {
+  --tp-primary: #0a0014; --tp-color: #cc00aa; --tp-stripe: #660055;
+  --tp-clip: polygon(8% 0, 92% 0, 100% 20%, 95% 95%, 90% 100%, 10% 100%, 5% 95%, 0 20%);
+  position:fixed; z-index:190; pointer-events:none;
+  color: var(--tp-color); text-transform: uppercase; font-size: 16px; letter-spacing: 3px;
+  font-weight: 900; min-width:180px; padding:0 18px; height: 46px; line-height: 46px; text-align: center;
+  font-family: Consolas,'Courier New','Lucida Console',monospace;
+  text-shadow: 0 0 8px var(--tp-color), 0 0 2px var(--tp-color);
+  image-rendering: pixelated; filter: contrast(1.4) brightness(0.9);
+  opacity:0; transition: opacity 0.35s;
+  transform: translateX(-50%);
+  white-space:nowrap;
+}
+#tut-prompt.visible { opacity:1; }
+#tut-prompt:after, #tut-prompt:before { content:''; position:absolute; clip-path: var(--tp-clip); z-index:-1; }
+#tut-prompt:before {
+  top:-4px; left:-4px; right:-4px; bottom:-4px;
+  background: repeating-linear-gradient(-45deg, var(--tp-stripe) 0px, var(--tp-stripe) 3px, transparent 3px, transparent 8px);
+  opacity:0.5;
+}
+#tut-prompt:after { top:0; left:0; right:0; bottom:0; background: var(--tp-primary); }
+#tut-prompt .tp-text { position:relative; z-index:1; }
+#tut-prompt.green { --tp-color: #00ee66; --tp-stripe: #005522; }
+#tut-prompt .emoji-pink { color:#ff44cc; text-shadow:0 0 6px rgba(255,68,204,0.7); }
+#tut-prompt .emoji-green { color:#00ee66; text-shadow:0 0 6px rgba(0,238,102,0.7); }
+@keyframes tut-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+#colonize-overlay { position:fixed; inset:0; z-index:200; display:none; align-items:flex-end; justify-content:center; padding-bottom:55px; background:transparent; transition:opacity 0.4s; } /* ВРЕМЕННО СКРЫТО */
+#colonize-overlay.hidden { opacity:0; pointer-events:none; }
+#colonize-btn {
+  --primary: #1a0000; --shadow-primary: #330000; --color: #cc0000; --border: 5px; --shimmy-distance: 5;
+  --clip: polygon(11% 0, 95% 0, 100% 25%, 90% 90%, 95% 90%, 85% 90%, 85% 100%, 7% 100%, 0 80%);
+  --clip-one: polygon(0 2%, 100% 2%, 100% 95%, 95% 95%, 95% 90%, 85% 90%, 85% 95%, 8% 95%, 0 70%);
+  --clip-two: polygon(0 78%, 100% 78%, 100% 100%, 95% 100%, 95% 90%, 85% 90%, 85% 100%, 8% 100%, 0 78%);
+  --clip-three: polygon(0 44%, 100% 44%, 100% 54%, 95% 54%, 95% 54%, 85% 54%, 85% 54%, 8% 54%, 0 54%);
+  --clip-four: polygon(0 0, 100% 0, 100% 0, 95% 0, 95% 0, 85% 0, 85% 0, 8% 0, 0 0);
+  --clip-six: polygon(0 40%, 100% 40%, 100% 85%, 95% 85%, 95% 85%, 85% 85%, 85% 85%, 8% 85%, 0 70%);
+  --clip-seven: polygon(0 63%, 100% 63%, 100% 80%, 95% 80%, 95% 80%, 85% 80%, 85% 80%, 8% 80%, 0 70%);
+  color: var(--color); text-transform: uppercase; font-size: 18px; letter-spacing: 4px; position: relative;
+  font-weight: 900; width: 280px; height: 60px; line-height: 60px; text-align: center; cursor: pointer;
+  transition: 0.2s; font-family: Consolas,'Courier New','Lucida Console',monospace;
+  text-shadow: 0 0 8px var(--color), 0 0 2px var(--color);
+  image-rendering: pixelated; filter: contrast(1.6) brightness(0.9);
+}
+#colonize-btn:after, #colonize-btn:before { content: ''; position: absolute; clip-path: var(--clip); z-index: -1; }
+#colonize-btn:before {
+  top:-6px; left:-6px; right:-6px; bottom:-6px;
+  background: repeating-linear-gradient(-45deg, #aa0000 0px, #aa0000 3px, #220000 3px, #220000 8px);
+  opacity:0.7;
+}
+#colonize-btn:after { top:0; left:0; right:0; bottom:0; background: var(--primary); }
+#colonize-btn .btn__glitch {
+  position: absolute; top: calc(var(--border) * -1); left: calc(var(--border) * -1); right: calc(var(--border) * -1);
+  bottom: calc(var(--border) * -1); background: #330000;
+  text-shadow: 2px 2px #440000, -2px -2px #880000;
+  clip-path: var(--clip); animation: glitch 5s infinite; display: block;
+}
+#colonize-btn .btn__glitch:before {
+  content: ''; position: absolute; top: var(--border); right: var(--border); bottom: var(--border); left: var(--border);
+  clip-path: var(--clip); background: var(--primary); z-index: -1;
+}
+@keyframes glitch {
+  0% { clip-path: var(--clip-one); }
+  2%, 8% { clip-path: var(--clip-two); transform: translate(calc(var(--shimmy-distance) * -1%), 0); }
+  6% { clip-path: var(--clip-two); transform: translate(calc(var(--shimmy-distance) * 1%), 0); }
+  9% { clip-path: var(--clip-two); transform: translate(0, 0); }
+  10% { clip-path: var(--clip-three); transform: translate(calc(var(--shimmy-distance) * 1%), 0); }
+  13% { clip-path: var(--clip-three); transform: translate(0, 0); }
+  14%, 21% { clip-path: var(--clip-four); transform: translate(calc(var(--shimmy-distance) * 1%), 0); }
+  35%, 45% { clip-path: var(--clip-six); transform: translate(calc(var(--shimmy-distance) * -1%)); }
+  40% { clip-path: var(--clip-six); transform: translate(calc(var(--shimmy-distance) * 1%)); }
+  50% { clip-path: var(--clip-six); transform: translate(0, 0); }
+  55% { clip-path: var(--clip-seven); transform: translate(calc(var(--shimmy-distance) * 1%), 0); }
+  60% { clip-path: var(--clip-seven); transform: translate(0, 0); }
+  31%, 61%, 100% { clip-path: var(--clip-four); }
+}
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 10px #ff1493, 0 0 20px #ff1493, 0 0 30px #ff1493, inset 0 0 10px rgba(255,20,147,0.4); }
+  50% { box-shadow: 0 0 20px #ff69b4, 0 0 40px #ff69b4, 0 0 60px #ff69b4, inset 0 0 20px rgba(255,105,180,0.6); }
+}
+#raise-btn {
+  --primary: #1a0000; --shadow-primary: #330000; --color: #cc0000; --border: 5px; --shimmy-distance: 5;
+  --clip: polygon(11% 0, 95% 0, 100% 25%, 90% 90%, 95% 90%, 85% 90%, 85% 100%, 7% 100%, 0 80%);
+  --clip-one: polygon(0 2%, 100% 2%, 100% 95%, 95% 95%, 95% 90%, 85% 90%, 85% 95%, 8% 95%, 0 70%);
+  --clip-two: polygon(0 78%, 100% 78%, 100% 100%, 95% 100%, 95% 90%, 85% 90%, 85% 100%, 8% 100%, 0 78%);
+  --clip-three: polygon(0 44%, 100% 44%, 100% 54%, 95% 54%, 95% 54%, 85% 54%, 85% 54%, 8% 54%, 0 54%);
+  --clip-four: polygon(0 0, 100% 0, 100% 0, 95% 0, 95% 0, 85% 0, 85% 0, 8% 0, 0 0);
+  --clip-six: polygon(0 40%, 100% 40%, 100% 85%, 95% 85%, 95% 85%, 85% 85%, 85% 85%, 8% 85%, 0 70%);
+  --clip-seven: polygon(0 63%, 100% 63%, 100% 80%, 95% 80%, 95% 80%, 85% 80%, 85% 80%, 8% 80%, 0 70%);
+  position:fixed; bottom:55px; left:50%; transform:translateX(-50%); z-index:200;
+  background:transparent; border:none;
+  color: var(--color); text-transform: uppercase; font-size: 18px; letter-spacing: 4px;
+  font-weight: 900; width: 280px; height: 60px; line-height: 60px; text-align: center; cursor: pointer;
+  transition: 0.2s; font-family: Consolas,'Courier New','Lucida Console',monospace; display:none;
+  text-shadow: 0 0 8px var(--color), 0 0 2px var(--color);
+  image-rendering: pixelated; filter: contrast(1.6) brightness(0.9);
+}
+#raise-btn:after, #raise-btn:before { content: ''; position: absolute; clip-path: var(--clip); z-index: -1; }
+#raise-btn:before {
+  top:-6px; left:-6px; right:-6px; bottom:-6px;
+  background: repeating-linear-gradient(-45deg, #aa0000 0px, #aa0000 3px, #220000 3px, #220000 8px);
+  opacity:0.7;
+}
+#raise-btn:after { top:0; left:0; right:0; bottom:0; background: var(--primary); }
+#raise-btn .btn__glitch {
+  position: absolute; top: calc(var(--border) * -1); left: calc(var(--border) * -1); right: calc(var(--border) * -1);
+  bottom: calc(var(--border) * -1); background: #330000;
+  text-shadow: 2px 2px #440000, -2px -2px #880000;
+  clip-path: var(--clip); animation: glitch 5s infinite; display: block;
+}
+#raise-btn .btn__glitch:before {
+  content: ''; position: absolute; top: var(--border); right: var(--border); bottom: var(--border); left: var(--border);
+  clip-path: var(--clip); background: var(--primary); z-index: -1;
+}
+#raise-btn.visible { display:block; }
+#ammo-bar.combat-hide { opacity:0; pointer-events:none; }
+#shop-btn.combat-hide { opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div class="hud-lives" id="hud-lives">❤ 5</div>
+  <div class="hud-wave" id="hud-wave">ВОЛНА 1</div>
+  <div class="hud-score" id="hud-score">0</div>
+  <div class="hud-energy" id="hud-energy">⚡ 0</div>
+</div>
+<div id="ammo-bar"></div>
+<div id="shop-btn">⬆ COLONY</div>
+<div id="shop-overlay">
+  <div id="shop-panel">
+    <div id="shop-content"></div>
+    <button id="shop-close">ЗАКРЫТЬ</button>
+  </div>
+</div>
+<div id="wave-text"></div>
+<div id="game-over-overlay">
+  <h1>БАЗА УНИЧТОЖЕНА</h1>
+  <p id="go-score">Счёт: 0</p>
+  <button id="restart-btn">ПЕРЕЗАПУСК</button>
+</div>
+<div id="tut-prompt"><span class="tp-text"></span></div>
+<div id="colonize-overlay">
+  <div id="colonize-btn">
+    ☣️_COLONIZE_☢️
+    <span class="btn__glitch" aria-hidden="">☣️_C_O_L_O_N_I_Z_E_☢️</span>
+  </div>
+</div>
+<div id="raise-btn">
+  ∆_BEACON_∆
+  <span class="btn__glitch" aria-hidden="">∆_B_E_A_C_O_N_∆</span>
+</div>
+<script>
+(function(){
+"use strict";
+var Vec2 = planck.Vec2;
+var PI = Math.PI;
+var TAU = PI * 2;
+
+/* ═══════════════ CONFIG ═══════════════ */
+var CFG = {
+  WORLD_W: 28,
+  PHYS_DT: 1/60,
+  VEL_ITER: 6,
+  POS_ITER: 2,
+  DRAG_MAX: 10,
+  VEL_FACTOR: 5.0,
+  CHARGE_SPEED: 1.8,
+  MAX_CHARGE: 3,
+  DMG_VEL_FACTOR: 0.4,
+  DMG_CHARGE_FACTOR: 2.5,
+  BASE_LIVES: 5,
+  PROJ_LIFETIME: 5,
+  PROJ_RADIUS: 0.35,
+  ENEMY_DAMPING: 2.5,
+  PARTICLE_MAX: 300,
+  CAT_PROJ: 0x0004,
+  CAT_ENEMY: 0x0008,
+  WAVE_REST: 60,
+  BASE_OFFSET: 12,
+  LIGHTHOUSE_OFFSET: 8,
+  SCANNER_RANGE_MULT: 8,
+};
+
+/* ═══════════════ COLONY TIERS ═══════════════ */
+var COLONY_TIERS = [
+  { name:'ПЕРВЫЙ ГОРОД', icon:'🛸', bonusLives:0, dmgMult:1.0,  chargeMult:1.0, cost:0,    desc:'Базовый лагерь. Всё только начинается.' },
+  { name:'ВТОРОЙ ГОРОД', icon:'🏕', bonusLives:1, dmgMult:1.12, chargeMult:1.15, cost:150,  desc:'+1 жизнь, +12% урон, +15% заряд' },
+  { name:'КОЛОНИЯ',      icon:'🏘', bonusLives:2, dmgMult:1.25, chargeMult:1.3,  cost:400,  desc:'+2 жизни, +25% урон, +30% заряд' },
+  { name:'ГОРОД',        icon:'🏙', bonusLives:3, dmgMult:1.4,  chargeMult:1.5,  cost:800,  desc:'+3 жизни, +40% урон, +50% заряд' },
+  { name:'МЕГАПОЛИС',    icon:'⚡', bonusLives:5, dmgMult:1.6,  chargeMult:1.8,  cost:1500, desc:'+5 жизней, +60% урон, +80% заряд' },
+];
+
+/* ═══════════════ PERKS ═══════════════ */
+var PERK_DEFS = [
+  { id:'chain_lightning', name:'Цепная молния', icon:'⚡', maxLvl:3, tierReq:0, costs:[80,140,220], descs:['При ударе бьёт 1 соседа током','Молния бьёт 2 соседей','Молния бьёт 3 соседей'] },
+  { id:'fast_charge', name:'Ускор. заряд', icon:'🔋', maxLvl:3, tierReq:0, costs:[60,100,160], descs:['+30% скорость заряда','+60% скорость заряда','+90% скорость заряда'] },
+  { id:'range', name:'Дальность', icon:'🎯', maxLvl:2, tierReq:1, costs:[120,200], descs:['Дампинг растёт медленнее','Минимальный дампинг вдали'] },
+  { id:'crit', name:'Критический удар', icon:'💀', maxLvl:2, tierReq:1, costs:[100,180], descs:['15% шанс x2.5 урона','25% шанс x3 урона'] },
+  { id:'tesla', name:'Тесла-катушка', icon:'🗼', maxLvl:3, tierReq:2, costs:[180,280,400], descs:['Авто-разряд каждые 3с','Разряд каждые 2с, +урон','Разряд каждые 1.2с, ++урон'] },
+  { id:'vortex', name:'Вихрь смерти', icon:'🌀', maxLvl:2, tierReq:2, costs:[200,350], descs:['Убитый враг притягивает ближних','Сильный вихрь + урон притянутым'] },
+  { id:'shield_gen', name:'Генератор щита', icon:'🛡', maxLvl:2, tierReq:3, costs:[300,500], descs:['Поглощает 1 прорыв за волну','Поглощает 2 прорыва за волну'] },
+  { id:'overcharge', name:'Перегрузка', icon:'🔥', maxLvl:1, tierReq:3, costs:[400], descs:['Макс. заряд x1.5, заряженные выстрелы взрываются'] },
+  { id:'singularity', name:'Сингулярность', icon:'🌑', maxLvl:1, tierReq:4, costs:[600], descs:['Полный заряд создаёт чёрную дыру на 2с'] },
+  { id:'multishot', name:'Мультивыстрел', icon:'🎯', maxLvl:2, tierReq:4, costs:[500,800], descs:['Выстрел выпускает 2 снаряда','Выстрел выпускает 3 снаряда'] },
+];
+
+/* ═══════════════ AMMO (unlocked by colony tier) ═══════════════ */
+var AMMO = [
+  { id:'standard',  icon:'⚪', name:'Стандарт',    desc:'Обычный снаряд',           color:'#ffffff', tierReq:0 },
+  { id:'explosive', icon:'🔴', name:'Фугас',       desc:'Взрыв при попадании',      color:'#ff6d00', tierReq:1 },
+  { id:'piercing',  icon:'🔵', name:'Бронебойный', desc:'Пробивает 2 врагов',       color:'#2979ff', tierReq:2 },
+  { id:'scatter',   icon:'🟢', name:'Картечь',     desc:'Разлетается на 5 осколков', color:'#00e676', tierReq:3 },
+  { id:'freeze',    icon:'🧊', name:'Крио',        desc:'Замораживает в радиусе',    color:'#00bcd4', tierReq:4 },
+];
+
+/* ═══════════════ ENEMY DEFS ═══════════════ */
+var E_TYPES = {
+  scout:     { name:'Разведчик',  sides:3, r:0.35, hp:[2,3,5],    speed:1.6,  color:'#39ff14', pts:10, nrg:5,  special:null },
+  soldier:   { name:'Солдат',     sides:4, r:0.50, hp:[5,8,12],   speed:0.8,  color:'#78909c', pts:20, nrg:10, special:null },
+  berserker: { name:'Берсерк',    sides:4, r:0.58, hp:[6,10,16],  speed:0.9,  color:'#ff1744', pts:50, nrg:25, special:'rage' },
+  healer:    { name:'Лекарь',     sides:0, r:0.50, hp:[4,6,10],   speed:0.7,  color:'#81c784', pts:60, nrg:30, special:'heal' },
+  general:   { name:'Генерал',    sides:5, r:0.70, hp:[50,80,120],speed:1.1,  color:'#ffd600', pts:100,nrg:50, special:'shield' },
+  tank:      { name:'Танк',       sides:6, r:1.05, hp:[90,140,200],speed:0.7, color:'#8d6e63', pts:80, nrg:40, special:null },
+  juggernaut:{ name:'Джаггернаут',sides:8, r:1.40, hp:[150,240,350],speed:0.44,color:'#5d4037', pts:150,nrg:80, special:null },
+};
+
+/* ═══════════════ WAVE DEFS ═══════════════ */
+var WAVES = [
+  [{ type:'scout', count:16, formation:'line' }],
+  [{ type:'soldier', count:20, formation:'line' }],
+  [{ type:'scout', count:24, formation:'vee' },{ type:'soldier', count:12, formation:'line' }],
+  [{ type:'berserker', count:8, formation:'line' },{ type:'scout', count:16, formation:'spread' }],
+  [{ type:'tank', count:4, formation:'center' },{ type:'scout', count:24, formation:'surround' }],
+  [{ type:'general', count:4, formation:'center' },{ type:'soldier', count:32, formation:'surround' }],
+  [{ type:'soldier', count:24, formation:'line' },{ type:'berserker', count:12, formation:'line' }],
+  [{ type:'healer', count:8, formation:'center' },{ type:'tank', count:8, formation:'spread' },{ type:'soldier', count:16, formation:'surround' }],
+  [{ type:'general', count:4, formation:'center' },{ type:'berserker', count:16, formation:'surround' },{ type:'tank', count:4, formation:'center' }],
+  [{ type:'juggernaut', count:4, formation:'center' },{ type:'healer', count:8, formation:'surround' },{ type:'soldier', count:40, formation:'surround' }],
+];
+
+/* ═══════════════ SEQUENCER — MIDI-LIKE SPAWN TIMELINE ═══════════════ */
+/*
+ * Нота = одна единица спавна:
+ *   { t: сек, type: 'scout', x: 0..1, y?: число, level: 0|1|2, group?: строка }
+ *
+ * Формация = группа нот (leader + escorts, раскрывается в ноты при загрузке):
+ *   { t: сек, formation: 'vee', leader: 'general', leaderLevel: 0,
+ *     escorts: [{ type:'soldier', dx: -1.5, dy: -0.5, level: 0 }, ...] }
+ *
+ * Волна-секвенция:
+ *   { id, name, duration, notes: [...], formations: [...],
+ *     modifiers: { hpMult, speedMult, nightOverride } }
+ *
+ * notes ДОЛЖНЫ быть отсортированы по t (для линейного воспроизведения).
+ * formations раскрываются в notes при запуске волны функцией expandFormations().
+ */
+
+/* Преобразует formations в плоские notes */
+function expandFormations(seq) {
+  if (!seq.formations || seq.formations.length === 0) return seq.notes.slice();
+  var out = seq.notes.slice();
+  for (var fi = 0; fi < seq.formations.length; fi++) {
+    var f = seq.formations[fi];
+    var def = E_TYPES[f.leader];
+    if (!def) continue;
+    /* Лидер */
+    out.push({ t: f.t, type: f.leader, x: 0.5, y: -1 - def.r, level: f.leaderLevel || 0, group: f.id || ('fm_' + fi) });
+    /* Эскорты */
+    if (f.escorts) {
+      for (var ei = 0; ei < f.escorts.length; ei++) {
+        var esc = f.escorts[ei];
+        var eDef = E_TYPES[esc.type];
+        if (!eDef) continue;
+        /* dx/dy в мировых юнитах → конвертируем dx в нормализованную x */
+        var nx = 0.5 + (esc.dx || 0) / CFG.WORLD_W;
+        var ny = -1 - (eDef.r) + (esc.dy || 0);
+        out.push({ t: f.t + (esc.dt || 0), type: esc.type, x: nx, y: ny, level: esc.level || 0, group: f.id || ('fm_' + fi) });
+      }
+    }
+  }
+  /* Сортируем по времени */
+  out.sort(function(a, b) { return a.t - b.t; });
+  return out;
+}
+
+/* Тестовая волна — заглушка, будет заменена в Фазе 11 */
+var WAVE_SEQUENCES = [
+  {
+    id: 'wave_01_patrol',
+    name: 'Дозор',
+    duration: 20,
+    notes: [
+      { t: 0.5, type: 'scout', x: 0.2, level: 0 },
+      { t: 0.5, type: 'scout', x: 0.5, level: 0 },
+      { t: 0.5, type: 'scout', x: 0.8, level: 0 },
+      { t: 2.0, type: 'scout', x: 0.35, level: 0 },
+      { t: 2.0, type: 'scout', x: 0.65, level: 0 },
+      { t: 3.5, type: 'scout', x: 0.15, level: 0 },
+      { t: 3.5, type: 'scout', x: 0.5, level: 0 },
+      { t: 3.5, type: 'scout', x: 0.85, level: 0 },
+      { t: 5.5, type: 'soldier', x: 0.3, level: 0 },
+      { t: 5.5, type: 'soldier', x: 0.5, level: 0 },
+      { t: 5.5, type: 'soldier', x: 0.7, level: 0 },
+      { t: 8.0, type: 'scout', x: 0.1, level: 0 },
+      { t: 8.0, type: 'scout', x: 0.3, level: 0 },
+      { t: 8.0, type: 'scout', x: 0.5, level: 0 },
+      { t: 8.0, type: 'scout', x: 0.7, level: 0 },
+      { t: 8.0, type: 'scout', x: 0.9, level: 0 },
+    ],
+    formations: [],
+    modifiers: { hpMult: 1.0, speedMult: 1.0 }
+  },
+  {
+    id: 'wave_02_formation_test',
+    name: 'Формация: Генерал + Эскорт',
+    duration: 25,
+    notes: [],
+    formations: [
+      {
+        t: 1.0,
+        id: 'f1',
+        leader: 'general',
+        leaderLevel: 0,
+        escorts: [
+          { type: 'soldier', dx: -2.5, dy: -0.8, dt: 0, level: 0 },
+          { type: 'soldier', dx:  2.5, dy: -0.8, dt: 0, level: 0 },
+          { type: 'soldier', dx: -4.0, dy: -1.5, dt: 0.5, level: 0 },
+          { type: 'soldier', dx:  4.0, dy: -1.5, dt: 0.5, level: 0 },
+        ]
+      },
+      {
+        t: 8.0,
+        id: 'f2',
+        leader: 'tank',
+        leaderLevel: 0,
+        escorts: [
+          { type: 'scout', dx: -1.5, dy: -0.5, dt: 0, level: 0 },
+          { type: 'scout', dx:  1.5, dy: -0.5, dt: 0, level: 0 },
+          { type: 'scout', dx: -3.0, dy: -1.0, dt: 0.2, level: 0 },
+          { type: 'scout', dx:  3.0, dy: -1.0, dt: 0.2, level: 0 },
+          { type: 'scout', dx:  0.0, dy: -2.0, dt: 0.4, level: 0 },
+        ]
+      },
+    ],
+    modifiers: { hpMult: 1.0, speedMult: 1.0 }
+  },
+];
+
+/* ═══════════════ GAME STATE ═══════════════ */
+var canvas, ctx, W, H, scale, worldH;
+var world;
+var state;
+/* Deferred action queues — processed AFTER world.step() */
+var deferredBodies = [];   /* { action:'create', args:{...} } */
+var deferredDestroy = [];  /* body references to destroy */
+
+/* ═══════════════ STREAMING VOLUMETRIC CLOUDS (v2) ═══════════════ */
+/*
+ * Многослойные объёмные облака поверх смоговой пустоши.
+ *
+ *   • Каждый слой — самостоятельный кольцевой буфер: base (шум) + mod (дельты).
+ *   • Слои едут в РАЗНЫЕ стороны — аркадный параллакс.
+ *   • Луч маяка делает облака прозрачными и «обнажает» врагов под ними.
+ *   • Взрывы прожигают дыры в КОНКРЕТНЫХ слоях (addCrater / updateCraters):
+ *       – взрыв у земли (alt≈0)  трогает только нижний слой;
+ *       – взрыв над облаками (alt→1) пробивает вниз слой за слоем, слабее с каждым,
+ *         в зависимости от силы взрыва и плотности облаков на пути.
+ *   • Рендер идёт в уменьшенный оффскрин и растягивается с интерполяцией —
+ *     дёшево даже с третьим слоем (см. cloudDownscale + layer.cheap).
+ */
+var TERRAIN_RES = 4;      /* «мировых» пикселей на ячейку сетки шума */
+var tw = 0, th = 0;       /* размеры сетки (ячейки) */
+var cloudDownscale = 2;   /* во сколько раз мельче рендерим оффскрин (2 = вчетверо меньше пикселей) */
+
+/* Слои снизу вверх по «высоте» (altitude 0 = у земли, 1 = высоко).
+ *   base  — шум облаков (кольцевой буфер)
+ *   mod   — дельты высоты (дыры от взрывов/маяка ≤ 0, лёгкие валики > 0)
+ *   cheap — рендерить в половинном горизонтальном разрешении (третий слой) */
+var cloudLayers = [
+  { name:'deck', base:null, mod:null, scrollDir:'down', cloudSpeed:8,  cloudAccum:0, topRow:0, bottomRow:0,
+    alpha:0.62, seed:0,    intensity:1.0,  altitude:0.15, enabled:true, cheap:false },
+  { name:'high', base:null, mod:null, scrollDir:'up',   cloudSpeed:4,  cloudAccum:0, topRow:0, bottomRow:0,
+    alpha:0.70, seed:1000, intensity:0.72, altitude:0.85, enabled:true, cheap:false },
+  { name:'veil', base:null, mod:null, scrollDir:'down', cloudSpeed:13, cloudAccum:0, topRow:0, bottomRow:0,
+    alpha:0.32, seed:5000, intensity:0.52, altitude:0.55, enabled:true, cheap:true  }
+];
+/* по-слойные суб-кратеры: каждый живёт в координатах СВОЕГО слоя и едет вместе с ним */
+var craters = [];
+
+/* ── Noise (value-noise, 5 октав) ── */
+var CLOUD_OCTAVES = [
+  { scaleX: 0.007, scaleY: 0.007, amp: 0.52 },
+  { scaleX: 0.018, scaleY: 0.018, amp: 0.30 },
+  { scaleX: 0.05,  scaleY: 0.05,  amp: 0.18 },
+  { scaleX: 0.12,  scaleY: 0.12,  amp: 0.12 },
+  { scaleX: 0.30,  scaleY: 0.30,  amp: 0.06 },
+];
+var _S1 = 127.1, _S2 = 311.7, _S3 = 43758.5453123;
+function _hash(ix, iy) { var d = Math.sin(ix * _S1 + iy * _S2) * _S3; return d - Math.floor(d); }
+function _smoothNoise(x, y) {
+  var ix = Math.floor(x), iy = Math.floor(y);
+  var fx = x - ix, fy = y - iy;
+  fx = fx * fx * (3 - 2 * fx);
+  fy = fy * fy * (3 - 2 * fy);
+  var a = _hash(ix, iy), b = _hash(ix+1, iy), c = _hash(ix, iy+1), d = _hash(ix+1, iy+1);
+  return a + (b-a)*fx + (c-a)*fy + (a-b-c+d)*fx*fy;
+}
+/* Значение шума для мировой ячейки (cellX, worldRow) с учётом seed и intensity */
+function noiseAtCell(cellX, worldRow, seed, intensity) {
+  seed = seed || 0;
+  intensity = intensity || 1.0;
+  var px = cellX * TERRAIN_RES + seed;
+  var py = worldRow * TERRAIN_RES + seed;
+  var val = 0;
+  for (var i = 0; i < CLOUD_OCTAVES.length; i++) {
+    var o = CLOUD_OCTAVES[i];
+    val += _smoothNoise(px * o.scaleX, py * o.scaleY) * o.amp;
+  }
+  return val * intensity;
+}
+
+/* ── Генерация строки конкретного слоя (обнуляет модификации новой строки) ── */
+function generateLayerRow(layerIdx, worldRow) {
+  var layer = cloudLayers[layerIdx];
+  var bufRow = ((worldRow % th) + th) % th;
+  var base = bufRow * tw;
+  for (var cx = 0; cx < tw; cx++) {
+    layer.base[base + cx] = noiseAtCell(cx, worldRow, layer.seed, layer.intensity);
+    layer.mod[base + cx] = 0; /* новая строка приходит «целой» */
+  }
+}
+
+/* ── Инициализация буферов всех слоёв ── */
+function initCloudMap(width, height) {
+  tw = Math.ceil(width / TERRAIN_RES);
+  th = Math.ceil(height / TERRAIN_RES) + 4; /* +4 запасных строки для плавности */
+  craters = [];
+  for (var i = 0; i < cloudLayers.length; i++) {
+    var L = cloudLayers[i];
+    L.base = new Float32Array(tw * th);
+    L.mod  = new Float32Array(tw * th);
+    L.cloudAccum = 0;
+    if (L.scrollDir === 'up') {
+      L.bottomRow = th - 1;
+      for (var r = 0; r < th; r++) generateLayerRow(i, r);
+    } else {
+      L.topRow = 0;
+      for (var r2 = 0; r2 < th; r2++) generateLayerRow(i, r2);
+    }
+  }
+}
+
+/* ── Прокрутка всех слоёв (каждый в свою сторону) ── */
+function scrollClouds(dt) {
+  if (tw === 0) return;
+  for (var i = 0; i < cloudLayers.length; i++) {
+    var layer = cloudLayers[i];
+    if (!layer.enabled) continue;
+    layer.cloudAccum += dt * layer.cloudSpeed;
+    if (layer.scrollDir === 'down') {
+      /* topRow растёт, новая строка генерится внизу */
+      while (layer.cloudAccum >= TERRAIN_RES) {
+        layer.cloudAccum -= TERRAIN_RES;
+        layer.topRow++;
+        generateLayerRow(i, layer.topRow + th - 1);
+      }
+    } else {
+      /* bottomRow убывает, новая строка генерится вверху */
+      while (layer.cloudAccum >= TERRAIN_RES) {
+        layer.cloudAccum -= TERRAIN_RES;
+        layer.bottomRow--;
+        generateLayerRow(i, layer.bottomRow - th + 1);
+      }
+    }
+  }
+}
+
+/* Экранный Y → абсолютная строка данного слоя (с учётом направления и субпикселя) */
+function screenYToLayerRow(layer, screenY) {
+  if (layer.scrollDir === 'up') {
+    var invSy = (H - 1 - screenY);
+    return layer.bottomRow - (invSy + layer.cloudAccum) / TERRAIN_RES;
+  }
+  return layer.topRow + (screenY + layer.cloudAccum) / TERRAIN_RES;
+}
+
+/* ── Маяк расталкивает облака вокруг себя (продавливает дыру в каждом слое) ── */
+function repelCloudsFromLighthouse() {
+  if (tw === 0 || !state || !state.colonized || !state.waveActive) return;
+  var lh = state.lighthouse;
+  var sc = toScreen(lh.x, lh.y);
+  var repelRadius = 0.7 * scale / TERRAIN_RES; /* маленький радиус — ровно размер маяка */
+  var rCeil = Math.ceil(repelRadius) + 1;
+  var cxCell = sc[0] / TERRAIN_RES;
+  var cxI = Math.floor(cxCell);
+
+  for (var li = 0; li < cloudLayers.length; li++) {
+    var layer = cloudLayers[li];
+    if (!layer.enabled) continue;
+    var rowF = screenYToLayerRow(layer, sc[1]);
+    var cyI = Math.floor(rowF);
+    var visMin, visMax;
+    if (layer.scrollDir === 'up') { visMax = layer.bottomRow; visMin = layer.bottomRow - th + 1; }
+    else { visMin = layer.topRow; visMax = layer.topRow + th - 1; }
+    for (var dty = -rCeil; dty <= rCeil; dty++) {
+      var worldRow = cyI + dty;
+      if (worldRow < visMin || worldRow > visMax) continue;
+      var bufRow = ((worldRow % th) + th) % th;
+      for (var dtx = -rCeil; dtx <= rCeil; dtx++) {
+        var txI = cxI + dtx;
+        if (txI < 0 || txI >= tw) continue;
+        var dx = txI - cxCell, dy = worldRow - rowF;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < repelRadius) {
+          var idx = bufRow * tw + txI;
+          var falloff = 1 - (dist / repelRadius); falloff *= falloff;
+          var delta = -0.4 * falloff;
+          if (delta < layer.mod[idx]) layer.mod[idx] = delta; /* глубже — побеждает */
+        }
+      }
+    }
+  }
+}
+
+/* ── Плотность облаков (нижний слой) в экранной точке — для модуляции смог-света ── */
+function getHeightAt(screenX, screenY) {
+  if (tw === 0) return 0.4;
+  var layer = cloudLayers[0];
+  var tx = Math.floor(screenX / TERRAIN_RES);
+  if (tx < 0 || tx >= tw) return 0.4;
+  var rowF = screenYToLayerRow(layer, screenY);
+  var worldRow = Math.floor(rowF);
+  var bufRow = ((worldRow % th) + th) % th;
+  var idx = bufRow * tw + tx;
+  return layer.base[idx] + layer.mod[idx];
+}
+
+/* ── Палитра высот → RGB (упаковано в int) ── */
+var cloudDarkMult = 1.0; /* 1.0 = день, 0.5 = ночь */
+function heightToColor(h) {
+  var contrast = (h - 0.5) * 2.5 + 0.5;
+  if (contrast < 0) contrast = 0; else if (contrast > 1) contrast = 1;
+  var r, g, b;
+  if (contrast < 0.3) {
+    var t = contrast / 0.3;
+    r = 2 + t * 3; g = 2 + t * 4; b = 4 + t * 6;
+  } else if (contrast < 0.45) {
+    var t2 = (contrast - 0.3) / 0.15;
+    r = 5 + t2 * 15; g = 6 + t2 * 18; b = 10 + t2 * 20;
+  } else if (contrast < 0.6) {
+    var t3 = (contrast - 0.45) / 0.15;
+    r = 20 + t3 * 25; g = 24 + t3 * 28; b = 30 + t3 * 30;
+  } else if (contrast < 0.75) {
+    var t4 = (contrast - 0.6) / 0.15;
+    r = 45 + t4 * 35; g = 52 + t4 * 40; b = 60 + t4 * 40;
+  } else {
+    var t5 = (contrast - 0.75) / 0.25;
+    r = 80 + t5 * 50; g = 92 + t5 * 55; b = 100 + t5 * 55;
+  }
+  r *= cloudDarkMult; g *= cloudDarkMult; b *= cloudDarkMult;
+  return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
+}
+
+/* ── Рендер облаков в уменьшенный offscreen → drawImage с интерполяцией ── */
+var _cloudCvs = null, _cloudCtx2 = null, _cloudImgData = null, _cloudOW = 0, _cloudOH = 0;
+function renderCloudsToCtx(destCtx, w, h, layerFilter) {
+  layerFilter = layerFilter || null; /* null = все слои, [i,...] = только эти */
+  if (tw === 0) return;
+
+  var ds = cloudDownscale;
+  var ow = Math.ceil(w / ds), oh = Math.ceil(h / ds);
+  if (!_cloudCvs) { _cloudCvs = document.createElement('canvas'); _cloudCtx2 = _cloudCvs.getContext('2d'); }
+  if (_cloudOW !== ow || _cloudOH !== oh) {
+    _cloudCvs.width = ow; _cloudCvs.height = oh;
+    _cloudOW = ow; _cloudOH = oh;
+    _cloudImgData = _cloudCtx2.createImageData(ow, oh);
+  }
+  var data = _cloudImgData.data;
+
+  /* ── Очищаем буфер ── */
+  for (var z = 0; z < data.length; z += 4) {
+    data[z] = 0; data[z+1] = 0; data[z+2] = 0; data[z+3] = 0;
+  }
+
+  /* ── Параметры луча маяка (в логических пикселях) ── */
+  var beamActive = state && state.colonized;
+  var lhSx = 0, lhSy = 0, dirX1 = 1, dirY1 = 0, dirX2 = -1, dirY2 = 0;
+  var scanLenSq = 0, cosThreshold = 1;
+  if (beamActive) {
+    var lh = state.lighthouse;
+    var bc = toScreen(lh.x, lh.y);
+    lhSx = bc[0]; lhSy = bc[1];
+    var br = 0.7 * scale;
+    var scanLen = br * CFG.SCANNER_RANGE_MULT * 3;
+    scanLenSq = scanLen * scanLen;
+    cosThreshold = Math.cos(0.25);
+    var beamRot = state.time * 1.5;
+    dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot);
+    dirX2 = -dirX1; dirY2 = -dirY1;
+  }
+
+  /* ── Рендерим слои (с учётом фильтра) ── */
+  for (var layerIdx = 0; layerIdx < cloudLayers.length; layerIdx++) {
+    var layer = cloudLayers[layerIdx];
+    if (!layer.enabled) continue;
+    if (layerFilter !== null && layerFilter.indexOf(layerIdx) === -1) continue;
+    var xstep = layer.cheap ? 2 : 1; /* дешёвый слой — половинное гориз. разрешение */
+    var la255 = layer.alpha * 255;
+
+    for (var oy = 0; oy < oh; oy++) {
+      var sy = oy * ds;                       /* логический Y */
+      var rowF = screenYToLayerRow(layer, sy);
+      var tyI = Math.floor(rowF);
+      var fy = rowF - tyI; fy = fy * fy * (3 - 2 * fy);
+      /* rowF — АБСОЛЮТНАЯ строка слоя, монотонно растёт с sy для обоих направлений,
+         поэтому соседняя строка для билинейной интерполяции всегда tyI+1 */
+      var bufRow0 = ((tyI % th) + th) % th;
+      var bufRow1 = (((tyI + 1) % th) + th) % th;
+      var base0 = bufRow0 * tw, base1 = bufRow1 * tw;
+      var rowOff = oy * ow * 4;
+      var dyBeam = sy - lhSy;
+
+      for (var ox = 0; ox < ow; ox += xstep) {
+        var sx = ox * ds;                     /* логический X */
+        var txF = sx / TERRAIN_RES;
+        var txI = Math.floor(txF);
+        var fx = txF - txI; fx = fx * fx * (3 - 2 * fx);
+        var tx2 = txI + 1;
+        if (txI >= tw) txI = tw - 1;
+        if (tx2 >= tw) tx2 = tw - 1;
+        if (txI < 0) txI = 0;
+
+        /* base + mod (дыры от взрывов/маяка) */
+        var i00 = base0 + txI, i10 = base0 + tx2, i01 = base1 + txI, i11 = base1 + tx2;
+        var h00 = layer.base[i00] + layer.mod[i00];
+        var h10 = layer.base[i10] + layer.mod[i10];
+        var h01 = layer.base[i01] + layer.mod[i01];
+        var h11 = layer.base[i11] + layer.mod[i11];
+        var hVal = h00*(1-fx)*(1-fy) + h10*fx*(1-fy) + h01*(1-fx)*fy + h11*fx*fy;
+
+        /* Конус луча маяка — понижаем hVal (просвечивание) + красный оттенок */
+        var inBeam = 0;
+        if (beamActive) {
+          var dxB = sx - lhSx;
+          var distSq = dxB * dxB + dyBeam * dyBeam;
+          if (distSq > 4 && distSq < scanLenSq) {
+            var invDist = 1 / Math.sqrt(distSq);
+            var dot1 = dxB * dirX1 + dyBeam * dirY1;
+            var cosA1 = dot1 * invDist;
+            if (cosA1 > cosThreshold && dot1 > 0) {
+              inBeam = (1 - distSq / scanLenSq) * ((cosA1 - cosThreshold) / (1 - cosThreshold));
+            } else {
+              var dot2 = dxB * dirX2 + dyBeam * dirY2;
+              var cosA2 = dot2 * invDist;
+              if (cosA2 > cosThreshold && dot2 > 0) {
+                inBeam = (1 - distSq / scanLenSq) * ((cosA2 - cosThreshold) / (1 - cosThreshold));
+              }
+            }
+            if (inBeam > 1) inBeam = 1;
+            if (inBeam > 0) hVal -= inBeam * 0.6; /* сильное просвечивание — обнажаем врагов */
+          }
+        }
+
+        var c = heightToColor(hVal);
+        var alpha = hVal < 0.28 ? 0 : Math.min(255, ((hVal - 0.28) / 0.35) * 255);
+        var cr = (c >> 16) & 0xff, cg = (c >> 8) & 0xff, cb = c & 0xff;
+
+        if (inBeam > 0 && alpha > 0) {
+          cr = (cr * (1 - inBeam * 0.5) + 180 * inBeam * 0.5) | 0;
+          cg = (cg * (1 - inBeam * 0.7)) | 0;
+          cb = (cb * (1 - inBeam * 0.7)) | 0;
+        }
+
+        var layerAlpha = (alpha * la255 / 255) | 0;
+
+        /* Аддитивное смешивание слоёв (пишем xstep пикселей для дешёвого слоя) */
+        for (var sxi = 0; sxi < xstep; sxi++) {
+          var oxx = ox + sxi;
+          if (oxx >= ow) break;
+          var off = rowOff + oxx * 4;
+          var na = data[off+3] + layerAlpha;
+          data[off]   = Math.min(255, data[off]   + cr * layerAlpha / 255) | 0;
+          data[off+1] = Math.min(255, data[off+1] + cg * layerAlpha / 255) | 0;
+          data[off+2] = Math.min(255, data[off+2] + cb * layerAlpha / 255) | 0;
+          data[off+3] = na > 255 ? 255 : na;
+        }
+      }
+    }
+  }
+  _cloudCtx2.putImageData(_cloudImgData, 0, 0);
+  var prevSmooth = destCtx.imageSmoothingEnabled;
+  destCtx.imageSmoothingEnabled = true;
+  destCtx.drawImage(_cloudCvs, 0, 0, ow, oh, 0, 0, w, h);
+  destCtx.imageSmoothingEnabled = prevSmooth;
+}
+
+function freshPerks(){
+  var p={};
+  for(var i=0;i<PERK_DEFS.length;i++) p[PERK_DEFS[i].id]=0;
+  return p;
+}
+function freshState() {
+  return {
+    lives: CFG.BASE_LIVES,
+    score: 0,
+    energy: 0,
+    wave: 0,
+    waveActive: false,
+    waveTimer: 2,
+    enemies: [],
+    projectiles: [],
+    particles: [],
+    lightningArcs: [],
+    lighthouse: { x:0, y:0 },
+    colonized: false, /* true после нажатия COLONIZE */
+    firstColony: false, /* true после первого кратера */
+    lhAbove: 0, /* 0..1 плавный переход маяка над/под облаками */
+    dragging: false,
+    dragStart: null,
+    dragCurrent: null,
+    charge: 0,
+    selectedAmmo: 0,
+    colonyTier: 0,
+    perks: freshPerks(),
+    shakeTimer: 0,
+    shakeIntensity: 0,
+    gameOver: false,
+    basePulse: 0,
+    lighthousePulse: 0,
+    time: 0,
+    teslaTimer: 0,
+    shieldCharges: 0,
+    singularities: [],
+    lights: [],
+    nightHpMult: 1, /* множитель HP для ночных волн */
+    /* ── Секвенсор спавна ── */
+    sequencer: {
+      active: false,        /* секвенсор играет */
+      elapsed: 0,           /* секунд с начала волны */
+      noteIdx: 0,           /* индекс следующей ноты */
+      notes: [],            /* развёрнутые ноты текущей волны (отсортированы по t) */
+      modifiers: null,      /* { hpMult, speedMult } текущей волны */
+      duration: 0,          /* длительность текущей секвенции */
+    },
+  };
+}
+function perkLvl(id){ return state.perks[id]||0; }
+function tier(){ return COLONY_TIERS[state.colonyTier]; }
+
+/* ═══════════════ CANVAS SETUP ═══════════════ */
+var dpr = 1;
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  scale = W / CFG.WORLD_W;
+  worldH = H / scale;
+  if (state) {
+    state.lighthouse.x = CFG.WORLD_W / 2;
+    state.lighthouse.y = worldH - CFG.BASE_OFFSET - CFG.LIGHTHOUSE_OFFSET;
+  }
+  /* Regenerate terrain on resize */
+  initCloudMap(W, H);
+  _surfCvs = null; /* пересоздать поверхность */
+}
+
+function toScreen(px, py) {
+  return [px * scale, py * scale];
+}
+
+function getBaseY() {
+  return worldH - CFG.BASE_OFFSET;
+}
+
+/* ═══════════════ PHYSICS WORLD ═══════════════ */
+var insideStep = false; /* Flag: true while world.step() is executing */
+
+function initWorld() {
+  world = planck.World(Vec2(0, 0));
+  world.on('begin-contact', onContact);
+}
+
+function makePolygonVerts(sides, r) {
+  if (sides === 0) return null;
+  var v = [];
+  for (var i = 0; i < sides; i++) {
+    var a = (i / sides) * TAU - PI / 2;
+    v.push(Vec2(Math.cos(a) * r, Math.sin(a) * r));
+  }
+  return v;
+}
+
+/* ═══════════════ ENEMY CREATION ═══════════════ */
+function spawnEnemy(type, x, y, level) {
+  if (typeof level === 'undefined') level = 0; /* default: Lv.0 Обычный */
+  var def = E_TYPES[type];
+  if (!def) return;
+  var body = world.createBody({
+    type: 'dynamic',
+    position: Vec2(x, y),
+    linearDamping: CFG.ENEMY_DAMPING,
+    fixedRotation: true,
+    bullet: false,
+  });
+  if (!body) return; /* guard */
+  var shape;
+  if (def.sides === 0) {
+    shape = planck.Circle(def.r);
+  } else if (def.sides === 4 && type === 'berserker') {
+    shape = planck.Polygon([Vec2(0, -def.r), Vec2(def.r*0.7, 0), Vec2(0, def.r), Vec2(-def.r*0.7, 0)]);
+  } else if (def.sides === 4) {
+    shape = planck.Box(def.r * 0.85, def.r * 0.85);
+  } else {
+    var verts = makePolygonVerts(def.sides, def.r);
+    shape = planck.Polygon(verts);
+  }
+  if (!shape) { world.destroyBody(body); return; } /* guard */
+  body.createFixture(shape, {
+    density: 2.0 + def.r * 3,
+    friction: 0.3,
+    restitution: 0.3,
+    filterCategoryBits: CFG.CAT_ENEMY,
+    filterMaskBits: CFG.CAT_PROJ,
+  });
+
+  /* ФАЗА 12: Множители уровней */
+  var levelHpMult = 1.0;
+  var levelSpeedMult = 1.0;
+  if (level === 1) { /* Ветеран */
+    levelHpMult = 1.5;
+    levelSpeedMult = 1.05;
+  } else if (level === 2) { /* Элита */
+    levelHpMult = 2.0;
+    levelSpeedMult = 1.1;
+  }
+
+  var hpMult = state.nightHpMult || 1;
+  var baseHp = (Array.isArray(def.hp)) ? def.hp[level] : def.hp;
+  var enemy = {
+    body: body,
+    type: type,
+    def: def,
+    level: level, /* 0=Обычный, 1=Ветеран, 2=Элита */
+    levelSpeedMult: levelSpeedMult, /* Применяется в moveEnemy() */
+    hp: baseHp * hpMult * levelHpMult,
+    maxHp: baseHp * hpMult * levelHpMult,
+    shielded: false,
+    shieldTimer: 0,
+    frozen: false,
+    frozenTimer: 0,
+    rageSpeed: 1,
+    alive: true,
+    flashTimer: 0,
+    deathTimer: -1,
+    wobblePhase: Math.random() * TAU,
+    wobbleFreq: 1.8 + Math.random() * 1.4,
+    wobbleAmp: 0.3 + Math.random() * 0.5,
+    stepBob: 0,
+    /* Lv.1 Soldier: Formation stacks */
+    formationStacks: 0,
+    /* Lv.2 Soldier: Block shield */
+    blockTimer: 0,
+    blockActive: false,
+    /* Lv.1 Scout: Dodge */
+    dodgeCooldown: 0,
+    dodgeDir: null,
+    /* Lv.2 Scout: Flicker */
+    flickerTimer: 0,
+    flickering: false,
+    /* Lv.1 Berserker: Blood trail */
+    trailParticles: [],
+    /* Lv.2 Berserker: Rage explosion on death */
+    rageExplosionTriggered: false,
+  };
+  body.setUserData({ kind: 'enemy', ref: enemy });
+  state.enemies.push(enemy);
+  return enemy;
+}
+
+/* ═══════════════ PLASMA SYSTEM FOR PROJECTILES ═══════════════ */
+var PLASMA_SCALE = 4; /* Визуальный масштаб плазмы относительно физ. радиуса */
+
+function initProjectilePlasma(proj, chargeRatio) {
+  /* chargeRatio = 0..1 для preview снаряда на основе заряда */
+  if (typeof chargeRatio === 'undefined') chargeRatio = 1; /* по умолчанию для летящих снарядов */
+
+  /* Количество молний зависит от заряда:
+     <20% = 1, 40% = 2, 60% = 3, 80% = 4, 90% = 5, 100% = 6 */
+  var nodeCount = 1;
+  if (chargeRatio >= 0.2 && chargeRatio < 0.4) nodeCount = 2;
+  else if (chargeRatio >= 0.4 && chargeRatio < 0.6) nodeCount = 3;
+  else if (chargeRatio >= 0.6 && chargeRatio < 0.8) nodeCount = 4;
+  else if (chargeRatio >= 0.8 && chargeRatio < 0.9) nodeCount = 5;
+  else if (chargeRatio >= 0.9) nodeCount = 6;
+
+  /* Радиус молний растёт с зарядом (от 50% до 200% базового масштаба) */
+  var chargeScale = 0.5 + chargeRatio * 1.5;
+  var r = proj.radius * PLASMA_SCALE * chargeScale;
+
+  var particleCount = 80;
+  var speed = 0.02;
+
+  for (var i = 0; i < particleCount; i++) {
+    var angle = Math.random() * TAU;
+    var dist = r * 0.2 + Math.random() * r * 0.7;
+    proj.plasmaParticles.push({
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist,
+      vx: (Math.random() - 0.5) * speed,
+      vy: (Math.random() - 0.5) * speed
+    });
+  }
+
+  for (var j = 0; j < nodeCount; j++) {
+    proj.plasmaNodes.push({
+      angle: (j / nodeCount) * TAU,
+      spin: (Math.random() - 0.5) * 0.08,
+      x: 0, y: 0
+    });
+  }
+
+  /* Сохраняем параметры заряда для обновления */
+  proj.chargeScale = chargeScale;
+}
+
+function updateProjectilePlasma(proj) {
+  var chargeScale = proj.chargeScale || 1; /* по умолчанию для летящих снарядов */
+  var r = proj.radius * PLASMA_SCALE * chargeScale;
+  var innerR = r * 0.12;
+  var outerR = r * 0.9;
+
+  for (var i = 0; i < proj.plasmaParticles.length; i++) {
+    var p = proj.plasmaParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    var dist = Math.sqrt(p.x * p.x + p.y * p.y);
+    if (dist > outerR || dist < innerR) {
+      p.vx *= -1;
+      p.vy *= -1;
+    }
+  }
+
+  for (var j = 0; j < proj.plasmaNodes.length; j++) {
+    var n = proj.plasmaNodes[j];
+    n.angle += n.spin;
+    n.spin += (Math.random() - 0.5) * 0.01;
+    n.spin = Math.max(-0.12, Math.min(0.12, n.spin));
+    n.x = Math.cos(n.angle) * innerR;
+    n.y = Math.sin(n.angle) * innerR;
+  }
+}
+
+function drawProjectilePlasma(targetCtx, sx, sy, proj) {
+  var chargeScale = proj.chargeScale || 1; /* по умолчанию для летящих снарядов */
+  var r = proj.radius * PLASMA_SCALE * chargeScale;
+  var color = proj.ammo.color;
+
+  targetCtx.save();
+  targetCtx.translate(sx, sy);
+  targetCtx.scale(scale, scale);
+
+  targetCtx.strokeStyle = color;
+  targetCtx.lineWidth = 1.2 / scale;
+  targetCtx.shadowColor = color;
+  targetCtx.shadowBlur = 10 / scale;
+  targetCtx.globalAlpha = 0.85;
+
+  for (var ni = 0; ni < proj.plasmaNodes.length; ni++) {
+    var n = proj.plasmaNodes[ni];
+    var maxJump = r * 0.6;
+    var px = n.x, py = n.y;
+    var lastEdgeDist = Math.sqrt(px * px + py * py);
+
+    targetCtx.beginPath();
+    targetCtx.moveTo(n.x, n.y);
+
+    /* Если молния привязана к врагу, тянем её туда */
+    if (n.targetEnemy && n.targetEnemy.alive && n.enemyRelX !== undefined) {
+      /* Рисуем молнию к врагу с изгибами */
+      var segments = 8;
+      for (var seg = 1; seg <= segments; seg++) {
+        var t = seg / segments;
+        var mx = n.x + n.enemyRelX * t;
+        var my = n.y + n.enemyRelY * t;
+        /* Добавляем случайное отклонение */
+        if (seg < segments) {
+          mx += (Math.random() - 0.5) * r * 0.3;
+          my += (Math.random() - 0.5) * r * 0.3;
+        }
+        targetCtx.lineTo(mx, my);
+      }
+    } else {
+      /* Обычная плазма без врага */
+      for (var jump = 0; jump < 6; jump++) {
+        var closest = null;
+        var closestDist = maxJump;
+        var closestEdge = 0;
+
+        for (var pi = 0; pi < proj.plasmaParticles.length; pi++) {
+          var p = proj.plasmaParticles[pi];
+          var dx = p.x - px;
+          var dy = p.y - py;
+          var d = dx * dx + dy * dy;
+
+          if (d < closestDist * closestDist && d > r * r * 0.003) {
+            var edgeDist = Math.sqrt(p.x * p.x + p.y * p.y);
+            if (edgeDist > lastEdgeDist) {
+              closestDist = Math.sqrt(d);
+              closest = p;
+              closestEdge = edgeDist;
+            }
+          }
+        }
+
+        if (!closest) break;
+
+        var xc = (px + closest.x) / 2 + (Math.random() - 0.5) * r * 0.2;
+        var yc = (py + closest.y) / 2 + (Math.random() - 0.5) * r * 0.2;
+        targetCtx.quadraticCurveTo(px, py, xc, yc);
+
+        px = closest.x;
+        py = closest.y;
+        lastEdgeDist = closestEdge;
+      }
+    }
+
+    targetCtx.stroke();
+  }
+
+  targetCtx.globalAlpha = 1;
+  targetCtx.shadowBlur = 0;
+  targetCtx.restore();
+}
+
+/* ═══════════════ EXPLOSION LIGHTNING ═══════════════ */
+var explosionBolts = [];
+
+function spawnExplosionBolts(worldX, worldY, color, radius, count) {
+  for (var i = 0; i < count; i++) {
+    var angle = (i / count) * TAU + (Math.random() - 0.5) * 0.3;
+    var segments = [];
+    var steps = 6 + Math.floor(Math.random() * 4);
+    var px = 0, py = 0;
+    for (var s = 0; s < steps; s++) {
+      var frac = (s + 1) / steps;
+      var tx = Math.cos(angle) * radius * frac;
+      var ty = Math.sin(angle) * radius * frac;
+      tx += (Math.random() - 0.5) * radius * 0.15;
+      ty += (Math.random() - 0.5) * radius * 0.15;
+      segments.push({ x1: px, y1: py, x2: tx, y2: ty });
+      px = tx;
+      py = ty;
+    }
+    explosionBolts.push({
+      wx: worldX, wy: worldY,
+      color: color,
+      segments: segments,
+      life: 0.25 + Math.random() * 0.2,
+      maxLife: 0.35
+    });
+  }
+}
+
+/* ═══════════════ PROJECTILE CREATION ═══════════════ */
+function createProjectileBody(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) {
+  var ammo = AMMO[ammoIdx];
+  var r = CFG.PROJ_RADIUS * (ammo.id === 'explosive' ? 1.4 : ammo.id === 'scatter' ? 1.2 : ammo.id === 'piercing' ? 0.9 : 1);
+  var body = world.createBody({
+    type: 'dynamic',
+    position: Vec2(fromX, fromY),
+    bullet: true,
+    linearDamping: 0,
+  });
+  if (!body) return null; /* guard */
+  body.createFixture(planck.Circle(r), {
+    density: 2.0,
+    friction: 0,
+    restitution: 0.7,
+    filterCategoryBits: CFG.CAT_PROJ,
+    filterMaskBits: CFG.CAT_ENEMY,
+  });
+  body.setLinearVelocity(Vec2(dirX * speed, dirY * speed));
+  /* Range perk: reduces damping growth with distance */
+  var rangeLvl = perkLvl('range');
+  var baseDamping = 0.8;
+  if (rangeLvl === 1) baseDamping = 0.5; /* Меньший дампинг */
+  else if (rangeLvl === 2) baseDamping = 0.2; /* Минимальный дампинг */
+  body.setLinearDamping(baseDamping);
+  var proj = {
+    body: body,
+    ammo: ammo,
+    charge: charge,
+    radius: r,
+    lifetime: CFG.PROJ_LIFETIME,
+    alive: true,
+    pierceCount: ammo.id === 'piercing' ? 2 : 0,
+    trail: [],
+    boltTimer: 0,
+    /* Плазменная система */
+    plasmaParticles: [],
+    plasmaNodes: []
+  };
+  /* Инициализируем плазму для снаряда с учётом заряда */
+  var maxCh = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
+  var chRatio = Math.min(charge / maxCh, 1);
+  initProjectilePlasma(proj, chRatio);
+  body.setUserData({ kind: 'proj', ref: proj });
+  state.projectiles.push(proj);
+  return proj;
+}
+
+function fireProjectile(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) {
+  /* If called during physics step, defer it */
+  if (insideStep) {
+    deferredBodies.push({ type:'proj', fromX:fromX, fromY:fromY, dirX:dirX, dirY:dirY, speed:speed, charge:charge, ammoIdx:ammoIdx });
+    return;
+  }
+  createProjectileBody(fromX, fromY, dirX, dirY, speed, charge, ammoIdx);
+}
+
+/* fire with multishot perk */
+function doFire(lhx,lhy,nx,ny,speed,charge,ammoIdx){
+  var ms=perkLvl('multishot');
+  var count=1+ms;
+  for(var i=0;i<count;i++){
+    var spread=(i-(count-1)/2)*0.12;
+    var cs=Math.cos(spread),sn=Math.sin(spread);
+    var dx2=nx*cs-ny*sn, dy2=nx*sn+ny*cs;
+    fireProjectile(lhx,lhy-0.6,dx2,dy2,speed*(1-Math.abs(spread)*0.15),charge,ammoIdx);
+  }
+}
+
+/* ═══════════════ CHAIN LIGHTNING ═══════════════ */
+function doChainLightning(cx,cy,damage,hitEnemy){
+  var chains=perkLvl('chain_lightning');
+  if(chains<=0)return;
+  var hit=[hitEnemy];
+  var px=cx,py=cy;
+  for(var c=0;c<chains;c++){
+    var best=null,bestD=16;
+    for(var i=0;i<state.enemies.length;i++){
+      var e=state.enemies[i];if(!e.alive)continue;
+      var dominated=false;
+      for(var h=0;h<hit.length;h++){if(hit[h]===e){dominated=true;break;}}
+      if(dominated)continue;
+      var ep=e.body.getPosition();
+      var dx=ep.x-px,dy=ep.y-py,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<bestD){bestD=d;best=e;}
+    }
+    if(!best)break;
+    var bp=best.body.getPosition();
+    state.lightningArcs.push({x1:px,y1:py,x2:bp.x,y2:bp.y,life:0.25});
+    var chainDmg=damage*0.4;
+    if(best.shielded)chainDmg*=0.5;
+    best.hp-=chainDmg;best.flashTimer=0.1;
+    spawnElectricSparks(bp.x,bp.y,'#00e5ff',3);
+    if(best.hp<=0)killEnemy(best);
+    hit.push(best);px=bp.x;py=bp.y;
+  }
+}
+
+/* ═══════════════ COLLISION ═══════════════ */
+function onContact(contact) {
+  var fA = contact.getFixtureA();
+  var fB = contact.getFixtureB();
+  if (!fA || !fB) return;
+  var bA = fA.getBody();
+  var bB = fB.getBody();
+  if (!bA || !bB) return;
+  var udA = bA.getUserData();
+  var udB = bB.getUserData();
+  if (!udA || !udB) return;
+  var proj = null, enemy = null, projBody = null, enemyBody = null;
+  if (udA.kind === 'proj' && udB.kind === 'enemy') {
+    proj = udA.ref; enemy = udB.ref;
+    projBody = bA; enemyBody = bB;
+  } else if (udB.kind === 'proj' && udA.kind === 'enemy') {
+    proj = udB.ref; enemy = udA.ref;
+    projBody = bB; enemyBody = bA;
+  }
+  if (!proj || !enemy || !proj.alive || !enemy.alive) return;
+
+  var vel = projBody.getLinearVelocity();
+  var impactSpeed = vel.length();
+  var dmgMult = tier().dmgMult;
+  var damage = (impactSpeed * CFG.DMG_VEL_FACTOR + proj.charge * CFG.DMG_CHARGE_FACTOR) * dmgMult;
+
+  /* crit perk */
+  var critLvl = perkLvl('crit');
+  var isCrit = false;
+  if (critLvl > 0) {
+    var critChance = critLvl === 1 ? 0.15 : 0.25;
+    var critMult = critLvl === 1 ? 2.5 : 3.0;
+    if (Math.random() < critChance) { damage *= critMult; isCrit = true; }
+  }
+
+  /* Lv.2 Soldier Block: frontal invulnerability (180° cone) */
+  var epos = enemyBody.getPosition();
+  if (enemy.type === 'soldier' && enemy.level === 2 && enemy.blockActive) {
+    var eVel = enemyBody.getLinearVelocity();
+    var eDir = Math.atan2(eVel.y, eVel.x);
+    var projDir = Math.atan2(vel.y, vel.x);
+    var angleDiff = Math.abs(eDir - projDir);
+    if (angleDiff > Math.PI) angleDiff = TAU - angleDiff;
+    if (angleDiff < Math.PI / 2) {
+      /* Frontal hit while blocking — no damage */
+      spawnHitParticles(epos.x, epos.y, '#4fc3f7', 12);
+      addParticle(epos.x, epos.y, 0, 0, 1.0, 'rgba(79,195,247,0.5)', 0.3, 'ring');
+      proj.alive = false;
+      return;
+    }
+  }
+
+  if (enemy.shielded) damage *= 0.5;
+
+  /* Knockback impulse */
+  var kLen = vel.length();
+  if (kLen > 0.01) {
+    var knockStr = (impactSpeed * 0.6 + proj.charge * 1.5) * enemyBody.getMass() * 0.3;
+    enemyBody.applyLinearImpulse(
+      Vec2(vel.x / kLen * knockStr, vel.y / kLen * knockStr),
+      enemyBody.getWorldCenter()
+    );
+  }
+
+  enemy.hp -= damage;
+  enemy.flashTimer = 0.12;
+
+  if (enemy.def.special === 'rage') {
+    enemy.rageSpeed = Math.min(enemy.rageSpeed + 0.3, 2.5);
+  }
+
+  spawnHitParticles(epos.x, epos.y, proj.ammo.color, isCrit ? 14 : 8);
+  spawnElectricSparks(epos.x, epos.y, proj.ammo.color, isCrit ? 8 : 4);
+
+  /* ВЗРЫВ при попадании - зависит от заряда */
+  var chargeNorm = proj.charge / CFG.MAX_CHARGE; /* 0-1 */
+  var chMult = 0.5 + chargeNorm * 1.5;
+  spawnPlasmaExplosion(epos.x, epos.y, proj.ammo.color, isCrit ? 15 : 10, chargeNorm);
+  spawnExplosionBolts(epos.x, epos.y, proj.ammo.color, 2.0 * chMult, isCrit ? 10 : 6);
+
+  /* chain lightning */
+  doChainLightning(epos.x, epos.y, damage, enemy);
+
+  /* overcharge explosion on high charge */
+  if (perkLvl('overcharge') > 0 && proj.charge >= CFG.MAX_CHARGE * 0.9) {
+    handleExplosion(epos.x, epos.y, 2.0, damage * 0.4);
+  }
+
+  if (proj.ammo.id === 'explosive') {
+    handleExplosion(epos.x, epos.y, 2.5, damage * 0.6);
+    proj.alive = false;
+  } else if (proj.ammo.id === 'scatter') {
+    /* DEFERRED: scatter sub-projectiles queued for after step */
+    handleScatter(proj);
+    proj.alive = false;
+  } else if (proj.ammo.id === 'freeze') {
+    handleFreeze(epos.x, epos.y, 2.5);
+    proj.alive = false;
+  } else if (proj.ammo.id === 'piercing') {
+    proj.pierceCount--;
+    if (proj.pierceCount <= 0) proj.alive = false;
+  } else {
+    proj.alive = false;
+  }
+
+  if (enemy.hp <= 0) {
+    /* Lv.2 Berserker Rage explosion on death with rage>2.0x */
+    if (enemy.type === 'berserker' && enemy.level === 2 && enemy.rageSpeed > 2.0 && !enemy.rageExplosionTriggered) {
+      enemy.rageExplosionTriggered = true;
+      var explPos = enemyBody.getPosition();
+      spawnHitParticles(explPos.x, explPos.y, '#ff5722', 30);
+      addParticle(explPos.x, explPos.y, 0, 0, 2.5, 'rgba(255,87,34,0.5)', 0.5, 'ring');
+      /* Push back projectiles */
+      for (var expi = 0; expi < state.projectiles.length; expi++) {
+        var exProj = state.projectiles[expi];
+        if (!exProj.alive) continue;
+        var exPpos = exProj.body.getPosition();
+        var exDx = exPpos.x - explPos.x, exDy = exPpos.y - explPos.y;
+        var exDist = Math.sqrt(exDx*exDx + exDy*exDy);
+        if (exDist < 2.5 && exDist > 0.1) {
+          var pushStr = (1 - exDist / 2.5) * 50;
+          exProj.body.applyLinearImpulse(Vec2(exDx / exDist * pushStr, exDy / exDist * pushStr), exProj.body.getPosition());
+        }
+      }
+      /* Damage lighthouse if close */
+      var lh = state.lighthouse;
+      var lhDx = lh.x - explPos.x, lhDy = lh.y - explPos.y;
+      var lhDist = Math.sqrt(lhDx*lhDx + lhDy*lhDy);
+      if (lhDist < 5) {
+        state.lives -= 1;
+        state.shakeTimer = 0.4;
+        state.shakeIntensity = 8;
+        spawnHitParticles(lh.x, lh.y, '#ff1744', 16);
+      }
+    }
+    killEnemy(enemy);
+  }
+}
+
+function handleExplosion(cx, cy, radius, damage) {
+  spawnExplosionParticles(cx, cy, 25);
+  addLight(cx, cy, radius * 2, '#ff6d00', 0.5); // Освещение смога от взрыва
+  /* Взрыв фугаса/перегрузки на уровне врагов — низкий (alt≈0.2), рвёт только нижний слой облаков */
+  addCrater(cx, cy, radius * 1.3, Math.min(1, damage / 12), 0.2);
+  state.shakeTimer = 0.25;
+  state.shakeIntensity = 5;
+  for (var i = state.enemies.length - 1; i >= 0; i--) {
+    var e = state.enemies[i];
+    if (!e.alive) continue;
+    var ep = e.body.getPosition();
+    var dx = ep.x - cx, dy = ep.y - cy;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < radius && dist > 0.01) {
+      var dmg = damage * (1 - dist / radius);
+      if (e.shielded) dmg *= 0.5;
+      e.hp -= dmg;
+      e.flashTimer = 0.12;
+      var force = 20 / (dist + 0.4);
+      e.body.applyLinearImpulse(
+        Vec2(dx / dist * force * e.body.getMass(), dy / dist * force * e.body.getMass()),
+        e.body.getWorldCenter()
+      );
+      if (e.hp <= 0) killEnemy(e);
+    }
+  }
+}
+
+function handleScatter(proj) {
+  var pos = proj.body.getPosition();
+  var vel = proj.body.getLinearVelocity();
+  var baseAngle = Math.atan2(vel.y, vel.x);
+  var spd = vel.length() * 0.65;
+  /* Queue scatter sub-projectiles for creation after world.step() */
+  for (var i = 0; i < 5; i++) {
+    var a = baseAngle + (i - 2) * 0.35;
+    deferredBodies.push({
+      type: 'scatter',
+      fromX: pos.x, fromY: pos.y,
+      dirX: Math.cos(a), dirY: Math.sin(a),
+      speed: spd,
+      charge: proj.charge * 0.3,
+    });
+  }
+}
+
+function handleFreeze(cx, cy, radius) {
+  spawnFreezeParticles(cx, cy, 18);
+  for (var i = 0; i < state.enemies.length; i++) {
+    var e = state.enemies[i];
+    if (!e.alive) continue;
+    var ep = e.body.getPosition();
+    var dx = ep.x - cx, dy = ep.y - cy;
+    if (dx*dx + dy*dy < radius*radius) {
+      e.frozen = true;
+      e.frozenTimer = 3.0;
+    }
+  }
+}
+
+function killEnemy(e) {
+  if (e.deathTimer >= 0) return;
+  e.alive = false;
+  e.deathTimer = 0.45;
+  state.score += e.def.pts;
+  state.energy += e.def.nrg;
+  var p = e.body.getPosition();
+  spawnDeathParticles(p.x, p.y, e.def.color, e.def.r * 14);
+  /* vortex perk */
+  var vLvl = perkLvl('vortex');
+  if (vLvl > 0) {
+    var vRadius = vLvl === 1 ? 3 : 4.5;
+    var vForce = vLvl === 1 ? 8 : 15;
+    var vDmg = vLvl === 2 ? 2 : 0;
+    for (var i = 0; i < state.enemies.length; i++) {
+      var e2 = state.enemies[i]; if (!e2.alive || e2 === e) continue;
+      var ep = e2.body.getPosition(), dx = p.x - ep.x, dy = p.y - ep.y, dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < vRadius && dist > 0.1) {
+        var str = vForce * (1 - dist / vRadius) * e2.body.getMass();
+        e2.body.applyLinearImpulse(Vec2(dx / dist * str, dy / dist * str), e2.body.getWorldCenter());
+        if (vDmg > 0) { e2.hp -= vDmg; e2.flashTimer = 0.08; if (e2.hp <= 0) killEnemy(e2); }
+      }
+    }
+    addParticle(p.x, p.y, 0, 0, vRadius * 0.4, 'rgba(180,0,255,0.3)', 0.5, 'ring');
+  }
+}
+
+/* ═══════════════ SEQUENCER PLAYER ═══════════════ */
+/* Проигрывает таймлайн нот из state.sequencer */
+function tickSequencer(dt) {
+  if (!state.sequencer.active) return;
+
+  state.sequencer.elapsed += dt;
+  var notes = state.sequencer.notes;
+  var idx = state.sequencer.noteIdx;
+
+  /* Проигрываем все ноты, чьё время t <= elapsed */
+  while (idx < notes.length && notes[idx].t <= state.sequencer.elapsed) {
+    spawnEnemyFromNote(notes[idx]);
+    idx++;
+  }
+  state.sequencer.noteIdx = idx;
+
+  /* Когда все ноты закончились И прошло duration — останавливаем секвенсор */
+  if (idx >= notes.length && state.sequencer.elapsed >= state.sequencer.duration) {
+    state.sequencer.active = false;
+  }
+}
+
+/* Спавнит врага из ноты секвенсора */
+function spawnEnemyFromNote(note) {
+  var def = E_TYPES[note.type];
+  if (!def) return;
+
+  /* x нормализованная 0..1 → worldX */
+  var worldX = note.x * CFG.WORLD_W;
+
+  /* y — если задана, используем, иначе дефолт -1 - def.r */
+  var worldY = (note.y !== undefined) ? note.y : (-1 - def.r);
+
+  /* ФАЗА 12: Передаём level из ноты в spawnEnemy */
+  var level = note.level || 0;
+
+  /* group — пока не используем */
+
+  spawnEnemy(note.type, worldX, worldY, level);
+}
+
+/* ═══════════════ DEFERRED BODY PROCESSING ═══════════════ */
+function processDeferredBodies() {
+  while (deferredBodies.length > 0) {
+    var item = deferredBodies.shift();
+    if (item.type === 'proj') {
+      createProjectileBody(item.fromX, item.fromY, item.dirX, item.dirY, item.speed, item.charge, item.ammoIdx);
+    } else if (item.type === 'scatter') {
+      /* Create scatter sub-projectile */
+      var body = world.createBody({ type:'dynamic', position:Vec2(item.fromX, item.fromY), bullet:true, linearDamping:0 });
+      if (!body) continue;
+      body.createFixture(planck.Circle(0.18), { density:1.5, friction:0, restitution:0.6, filterCategoryBits:CFG.CAT_PROJ, filterMaskBits:CFG.CAT_ENEMY });
+      body.setLinearVelocity(Vec2(item.dirX * item.speed, item.dirY * item.speed));
+      var sp = { body:body, ammo:AMMO[0], charge:item.charge, radius:0.18, lifetime:1.8, alive:true, pierceCount:0, trail:[], boltTimer:0, plasmaParticles:[], plasmaNodes:[] };
+      var spMaxCh = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
+      var spChRatio = Math.min(item.charge / spMaxCh, 1);
+      initProjectilePlasma(sp, spChRatio);
+      body.setUserData({ kind:'proj', ref:sp });
+      state.projectiles.push(sp);
+    }
+  }
+}
+
+function processDeferredDestroy() {
+  while (deferredDestroy.length > 0) {
+    var body = deferredDestroy.shift();
+    try { world.destroyBody(body); } catch(_e) { /* already destroyed */ }
+  }
+}
+
+/* ═══════════════ SINGULARITY ═══════════════ */
+function spawnSingularity(x, y) {
+  state.singularities.push({ x:x, y:y, life:2.0, maxLife:2.0 });
+}
+function updateSingularities(dt) {
+  for (var i = state.singularities.length - 1; i >= 0; i--) {
+    var s = state.singularities[i]; s.life -= dt;
+    if (s.life <= 0) { state.singularities.splice(i, 1); continue; }
+    var radius = 3.5, pullForce = 12;
+    for (var j = 0; j < state.enemies.length; j++) {
+      var e = state.enemies[j]; if (!e.alive) continue;
+      var ep = e.body.getPosition(), dx = s.x - ep.x, dy = s.y - ep.y, dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < radius && dist > 0.2) {
+        var str = pullForce * (1 - dist / radius) * e.body.getMass() * dt * 3;
+        e.body.applyForceToCenter(Vec2(dx / dist * str, dy / dist * str));
+      }
+    }
+    if (Math.random() < 0.3) addParticle(s.x + (Math.random()-0.5)*2, s.y + (Math.random()-0.5)*2, 0, 0, 0.05, '#b388ff', 0.3);
+  }
+}
+
+/* ═══════════════ TESLA COIL ═══════════════ */
+function updateTesla(dt) {
+  var tLvl = perkLvl('tesla'); if (tLvl <= 0) return;
+  var interval = tLvl === 1 ? 3 : tLvl === 2 ? 2 : 1.2;
+  var dmg = tLvl === 1 ? 2 : tLvl === 2 ? 4 : 7;
+  state.teslaTimer += dt;
+  if (state.teslaTimer >= interval) {
+    state.teslaTimer = 0;
+    var lh = state.lighthouse, best = null, bestD = 999;
+    for (var i = 0; i < state.enemies.length; i++) {
+      var e = state.enemies[i]; if (!e.alive) continue;
+      var ep = e.body.getPosition(), dx = ep.x - lh.x, dy = ep.y - lh.y, d = Math.sqrt(dx*dx + dy*dy);
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    if (best && bestD < 20) {
+      var bp = best.body.getPosition();
+      state.lightningArcs.push({ x1:lh.x, y1:lh.y, x2:bp.x, y2:bp.y, life:0.3 });
+      best.hp -= dmg; best.flashTimer = 0.15;
+      spawnElectricSparks(bp.x, bp.y, '#00e5ff', 5);
+      if (best.hp <= 0) killEnemy(best);
+    }
+  }
+}
+
+/* ═══════════════ RANGE PERK ═══════════════ */
+/* Range perk reduces how much damping grows with distance from lighthouse.
+   Damping is applied per projectile in projectile spawn, not here. */
+
+/* ═══════════════ PARTICLES ═══════════════ */
+function addParticle(x, y, vx, vy, r, color, life, type) {
+  if (state.particles.length >= CFG.PARTICLE_MAX) state.particles.shift();
+  state.particles.push({ x:x, y:y, vx:vx, vy:vy, r:r, color:color, life:life, maxLife:life, type:type||'circle' });
+}
+function spawnHitParticles(x, y, color, n) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random()*TAU, s = 2+Math.random()*5;
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, 0.07+Math.random()*0.07, color, 0.4+Math.random()*0.3);
+  }
+}
+function spawnDeathParticles(x, y, color, n) {
+  for (var i = 0; i < (n|0); i++) {
+    var a = Math.random()*TAU, s = 1+Math.random()*5;
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, 0.09+Math.random()*0.13, color, 0.5+Math.random()*0.5, 'square');
+  }
+}
+function spawnExplosionParticles(x, y, n) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random()*TAU, s = 3+Math.random()*7;
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, 0.1+Math.random()*0.15, '#ff6d00', 0.3+Math.random()*0.4);
+  }
+  addParticle(x, y, 0, 0, 2.5, 'rgba(255,109,0,0.3)', 0.4, 'ring');
+}
+function spawnFreezeParticles(x, y, n) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random()*TAU, s = 1+Math.random()*3;
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, 0.05+Math.random()*0.08, '#80deea', 0.6+Math.random()*0.4, 'diamond');
+  }
+}
+function spawnElectricSparks(x, y, color, n) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random()*TAU, s = 4+Math.random()*6;
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, 0.04+Math.random()*0.04, color, 0.15+Math.random()*0.15, 'bolt');
+  }
+}
+function spawnPlasmaExplosion(x, y, color, n, charge) {
+  /* charge от 0 до 1, по умолчанию 0.5 */
+  if (charge === undefined) charge = 0.5;
+  var chargeMult = 0.5 + charge * 1.5; /* 0.5-2.0 в зависимости от заряда */
+
+  /* Визуально в 4 раза мощнее, масштабируется от заряда */
+  for (var i = 0; i < n * 4; i++) {
+    var a = Math.random()*TAU, s = (3+Math.random()*8) * chargeMult;
+    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, (0.12+Math.random()*0.15) * chargeMult, color, 0.5+Math.random()*0.4);
+  }
+  /* Больше колец, размер зависит от заряда */
+  addParticle(x, y, 0, 0, 2.5 * chargeMult, hexToRgba(color, 0.4), 0.5, 'ring');
+  addParticle(x, y, 0, 0, 4.0 * chargeMult, hexToRgba(color, 0.2), 0.6, 'ring');
+  addLight(x, y, 7.0 * chargeMult, color, 1.2); // Свет зависит от заряда
+  /* Яма в облаках: слабый заряд рвётся низко (только нижний слой),
+     полный заряд детонирует высоко и пробивает слои вниз. */
+  addCrater(x, y, 3.5 * chargeMult, 0.35 + charge * 0.65, 0.15 + charge * 0.8);
+
+  /* Взрывная волна - физически в 2 раза сильнее */
+  var explosionRadius = 4.4 * chargeMult;
+  var explosionDamage = 6 * chargeMult;
+  state.shakeTimer = 0.4 * chargeMult;
+  state.shakeIntensity = 8 * chargeMult;
+
+  for (var j = state.enemies.length - 1; j >= 0; j--) {
+    var e = state.enemies[j];
+    if (!e.alive) continue;
+    var ep = e.body.getPosition();
+    var dx = ep.x - x, dy = ep.y - y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < explosionRadius && dist > 0.01) {
+      var dmg = explosionDamage * (1 - dist / explosionRadius);
+      if (e.shielded) dmg *= 0.5;
+      e.hp -= dmg;
+      e.flashTimer = 0.12;
+      /* Отталкивание - в 2 раза сильнее */
+      var force = 30 / (dist + 0.4);
+      e.body.applyLinearImpulse(
+        Vec2(dx / dist * force * e.body.getMass(), dy / dist * force * e.body.getMass()),
+        e.body.getWorldCenter()
+      );
+      if (e.hp <= 0) killEnemy(e);
+    }
+  }
+}
+function addLight(x, y, radius, color, life) {
+  state.lights.push({ x:x, y:y, radius:radius, color:color, life:life, maxLife:life });
+}
+/*
+ * Взрыв прожигает облака. Параметры:
+ *   maxRadius — базовый радиус дыры (мировые юниты)
+ *   power     — сила взрыва 0..1
+ *   alt       — высота взрыва: 0 = у земли, 1 = высоко над облаками
+ *
+ * Ударная волна идёт ВНИЗ от высоты взрыва. Пробиваются только слои на высоте <= alt,
+ * от ближнего к дальнему, слабея на каждом промежутке и «поглощаясь» пройденным слоем.
+ *   • взрыв у земли (alt≈0.2) достаёт лишь нижний слой (deck);
+ *   • мощный взрыв над облаками (alt→1) пробивает вниз слой за слоем, но меньше с каждым.
+ */
+var CRATER_GAP_ATTEN = 0.7; /* потеря силы на вертикальном промежутке между высотами */
+var CRATER_TRANSMIT  = 0.6; /* сколько энергии проходит СКВОЗЬ слой к следующему ниже */
+function addCrater(wx, wy, maxRadius, power, alt) {
+  if (tw === 0) return;
+  power = (power === undefined) ? 1 : (power < 0 ? 0 : power > 1 ? 1 : power);
+  alt   = (alt === undefined) ? 0.2 : (alt < 0 ? 0 : alt > 1 ? 1 : alt);
+  var sc = toScreen(wx, wy);
+  var sx = sc[0], sy = sc[1];
+
+  /* слои на высоте <= alt, от высокого к низкому (по пути ударной волны вниз) */
+  var order = [];
+  for (var i = 0; i < cloudLayers.length; i++) {
+    var L = cloudLayers[i];
+    if (L.enabled && L.altitude <= alt + 0.08) order.push(i);
+  }
+  order.sort(function(a, b){ return cloudLayers[b].altitude - cloudLayers[a].altitude; });
+
+  var carry = power;
+  for (var oi = 0; oi < order.length; oi++) {
+    var li = order[oi];
+    var layer = cloudLayers[li];
+    var gap = alt - layer.altitude; if (gap < 0) gap = 0;
+    var reach = carry * (1 - gap * CRATER_GAP_ATTEN);
+    if (reach <= 0.06) break;               /* дальше вниз уже не пробивает */
+    spawnLayerCrater(li, sx, sy, maxRadius, reach);
+    carry = reach * CRATER_TRANSMIT;        /* слой поглотил часть — следующему ниже меньше */
+  }
+}
+
+function spawnLayerCrater(layerIdx, sx, sy, maxRadius, strength) {
+  var layer = cloudLayers[layerIdx];
+  craters.push({
+    layerIdx: layerIdx,
+    screenX: sx,                                   /* облака не скроллятся по X */
+    layerRowF: screenYToLayerRow(layer, sy),       /* строка в координатах слоя — едет с ним */
+    currentRadius: 0,
+    maxRadius: maxRadius * (0.7 + strength * 0.5), /* сильнее взрыв — шире дыра */
+    growthRate: maxRadius * 3.2,
+    depth: 0.35 + strength * 0.5                   /* и глубже */
+  });
+}
+
+function updateCraters(dt) {
+  if (tw === 0) return;
+  for (var ci = craters.length - 1; ci >= 0; ci--) {
+    var c = craters[ci];
+    var layer = cloudLayers[c.layerIdx];
+    if (!layer || !layer.enabled) { craters.splice(ci, 1); continue; }
+
+    /* видимый диапазон АБСОЛЮТНЫХ строк этого слоя */
+    var visMin, visMax;
+    if (layer.scrollDir === 'up') { visMax = layer.bottomRow; visMin = layer.bottomRow - th + 1; }
+    else { visMin = layer.topRow; visMax = layer.topRow + th - 1; }
+
+    /* уехал за пределы буфера — дыра исчезла вместе с облаком */
+    if (c.layerRowF < visMin - 2 || c.layerRowF > visMax + 2) { craters.splice(ci, 1); continue; }
+
+    /* растём; когда дожгли до maxRadius — дельта уже впечатана в layer.mod и едет со слоем,
+       больше стемповать не нужно (дыра «застыла» и скроллится сама) */
+    if (c.currentRadius >= c.maxRadius) continue;
+    c.currentRadius = Math.min(c.currentRadius + c.growthRate * dt, c.maxRadius);
+
+    var radiusCells = (c.currentRadius * scale) / TERRAIN_RES;
+    var outerCells = radiusCells * 1.25;
+    var cxCell = c.screenX / TERRAIN_RES;
+    var cyRow = c.layerRowF;
+    var rCeil = Math.ceil(outerCells) + 1;
+    var cxI = Math.floor(cxCell);
+    var cyI = Math.floor(cyRow);
+
+    for (var dty = -rCeil; dty <= rCeil; dty++) {
+      var worldRow = cyI + dty;
+      if (worldRow < visMin || worldRow > visMax) continue;
+      var bufRow = ((worldRow % th) + th) % th;
+      for (var dtx = -rCeil; dtx <= rCeil; dtx++) {
+        var txI = cxI + dtx;
+        if (txI < 0 || txI >= tw) continue;
+        var dx = txI - cxCell;
+        var dy2 = worldRow - cyRow;
+        var dist = Math.sqrt(dx * dx + dy2 * dy2);
+        var idx = bufRow * tw + txI;
+
+        if (dist < radiusCells) {
+          var falloff = 1 - (dist / radiusCells); falloff *= falloff;
+          var delta = -c.depth * falloff;
+          if (delta < layer.mod[idx]) layer.mod[idx] = delta; /* глубже — побеждает */
+        } else if (dist < outerCells) {
+          /* лёгкий валик уплотнения по краю дыры */
+          var ring = (dist - radiusCells) / (outerCells - radiusCells);
+          var push = (1 - ring) * (1 - ring) * 0.12 * c.depth;
+          if (push > layer.mod[idx]) layer.mod[idx] = push > 0.18 ? 0.18 : push;
+        }
+      }
+    }
+  }
+}
+function updateLights(dt) {
+  for (var i = state.lights.length - 1; i >= 0; i--) {
+    state.lights[i].life -= dt;
+    if (state.lights[i].life <= 0) state.lights.splice(i, 1);
+  }
+}
+function updateParticles(dt) {
+  for (var i = state.particles.length - 1; i >= 0; i--) {
+    var p = state.particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { state.particles.splice(i, 1); continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.94;
+    p.vy *= 0.94;
+  }
+}
+
+/* ═══════════════ WAVE SYSTEM ═══════════════ */
+function startWave() {
+  state.wave++;
+  state.waveActive = true;
+
+  /* Каждая волна двойная: нечётная = ДЕНЬ, чётная = НОЧЬ */
+  var isNight = (state.wave % 2 === 0);
+  var dayWave = isNight ? state.wave / 2 : Math.ceil(state.wave / 2);
+  var waveIdx = (dayWave - 1) % WAVE_SEQUENCES.length;
+  var cycleNum = Math.floor((dayWave - 1) / WAVE_SEQUENCES.length) + 1; /* Цикл: 1, 2, 3... */
+  var cycleMult = 1 + (cycleNum - 1) * 0.4;
+
+  if (isNight) {
+    showWaveText('NIGHT ' + (dayWave));
+    state.nightHpMult = 2; /* враги в 2 раза сильнее */
+    cloudDarkMult = 0.5;   /* облака темнеют вдвое */
+  } else {
+    showWaveText('DAY ' + dayWave);
+    state.nightHpMult = 1;
+    cloudDarkMult = 1.0;
+  }
+
+  /* refresh shield charges */
+  var sg = perkLvl('shield_gen');
+  state.shieldCharges = sg > 0 ? sg : 0;
+
+  /* Загружаем секвенцию из WAVE_SEQUENCES */
+  var seq = WAVE_SEQUENCES[waveIdx];
+  var expandedNotes = expandFormations(seq);
+
+  /* ФАЗА 12: Применяем уровни врагов в зависимости от цикла */
+  if (cycleNum >= 2) {
+    for (var ni = 0; ni < expandedNotes.length; ni++) {
+      var note = expandedNotes[ni];
+      if (!note.level || note.level === 0) {
+        if (cycleNum === 2) {
+          note.level = 1; /* Цикл 2 → Lv.1 Ветеран */
+        } else if (cycleNum >= 3) {
+          note.level = 2; /* Цикл 3+ → Lv.2 Элита */
+        }
+      }
+    }
+  }
+
+  /* Применяем модификаторы волны */
+  var mods = seq.modifiers || {};
+  var hpMult = (mods.hpMult || 1.0) * cycleMult;
+  if (isNight) hpMult *= 2;
+  state.nightHpMult = hpMult;
+
+  /* Запускаем секвенсор */
+  state.sequencer.active = true;
+  state.sequencer.elapsed = 0;
+  state.sequencer.noteIdx = 0;
+  state.sequencer.notes = expandedNotes;
+  state.sequencer.modifiers = mods;
+  state.sequencer.duration = seq.duration || 20;
+}
+
+/* ═══════════════ INPUT ═══════════════ */
+function initInput() {
+  function getPos(e) {
+    var t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX / scale, y: t.clientY / scale };
+  }
+  function onDown(e) {
+    if (state.gameOver) return;
+    var p = getPos(e);
+    var lh = state.lighthouse;
+    var dx = p.x - lh.x, dy = p.y - lh.y;
+    if (dx*dx + dy*dy < 3.5*3.5) {
+      state.dragging = true;
+      state.dragStart = { x: lh.x, y: lh.y };
+      state.dragCurrent = p;
+      state.charge = 0;
+      tutOnHold();
+    }
+  }
+  function onMove(e) {
+    if (!state.dragging) return;
+    e.preventDefault();
+    state.dragCurrent = getPos(e);
+  }
+  function onUp() {
+    if (!state.dragging) return;
+    tutOnRelease();
+    state.dragging = false;
+
+    /* Блокируем стрельбу пока маяк не поднят (после основания города) */
+    if (state.firstColony && !state.waveActive) {
+      showWaveText('▲ RAISE BEACON ▲');
+      state.charge = 0;
+      return;
+    }
+
+    var lh = state.lighthouse;
+    var dc = state.dragCurrent;
+    var dx = lh.x - dc.x, dy = lh.y - dc.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    /* Чувствительность и порог зависят от состояния боя */
+    var dragMax = state.waveActive ? 14 : CFG.DRAG_MAX;
+    var minThreshold = state.waveActive ? 0.17 : 0.25;
+    var dragPct = Math.min(dist / dragMax, 1);
+    if (dragPct >= minThreshold) {
+      /* Проверяем энергию */
+      if (state.energy < 1) {
+        showWaveText('⚡ NO ENERGY');
+        state.charge = 0;
+        return;
+      }
+      var maxVel = 18 + state.colonyTier * 2;
+      var speed = Math.min(dist * CFG.VEL_FACTOR, maxVel);
+      var nx = dx / dist, ny = dy / dist;
+      doFire(lh.x, lh.y, nx, ny, speed, state.charge, state.selectedAmmo);
+      state.energy -= 1; /* тратим энергию */
+      /* singularity perk */
+      if (perkLvl('singularity') > 0 && state.charge >= CFG.MAX_CHARGE * 0.95) {
+        var sRange = Math.min(dist * 2, 8);
+        spawnSingularity(lh.x + nx * sRange, lh.y + ny * sRange);
+      }
+    }
+    state.charge = 0;
+  }
+  canvas.addEventListener('mousedown', onDown);
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  canvas.addEventListener('touchmove', onMove, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+}
+
+/* ═══════════════ UPDATE ═══════════════ */
+function update(dt) {
+  if (state.gameOver) return;
+  state.time += dt;
+  state.basePulse += dt * 2.5;
+  state.lighthousePulse += dt * 3;
+  if (state.shakeTimer > 0) state.shakeTimer -= dt;
+
+  /* Движение облаков сверху вниз */
+  scrollClouds(dt);
+  /* Ветровые кисти мутируют облака */
+  /* Маяк разгоняет облака */
+  repelCloudsFromLighthouse();
+  /* Туториал */
+  tutUpdate(dt);
+  /* Постепенный рост города */
+  updateCityGrowth(dt);
+  /* Секвенсор спавна врагов */
+  tickSequencer(dt);
+
+  /* Плавный переход маяка: в бою поднимается (1), в затишье опускается (0) */
+  var lhTarget = state.waveActive ? 1 : 0;
+  state.lhAbove += (lhTarget - state.lhAbove) * dt * 2.5;
+
+  /* Если ещё не колонизировано — только облака и время */
+  if (!state.colonized) return;
+
+  /* Charge while dragging — colony chargeMult + fast_charge perk */
+  var maxCharge = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
+  if (state.dragging) {
+    var chgSpd = CFG.CHARGE_SPEED * 0.5 * tier().chargeMult * (1 + perkLvl('fast_charge') * 0.3);
+    state.charge = Math.min(state.charge + dt * chgSpd, maxCharge);
+  }
+
+  /* Wave management — только после первой колонии */
+  if (!state.waveActive) {
+    if (state.firstColony) {
+      state.waveTimer -= dt;
+      if (state.waveTimer <= 0) startWave();
+    }
+  } else {
+    /* Проверяем завершение волны: секвенсор остановлен И все враги мертвы */
+    var allDead = true;
+    for (var k = 0; k < state.enemies.length; k++) {
+      if (state.enemies[k].alive) { allDead = false; break; }
+    }
+    if (!state.sequencer.active && allDead) {
+      state.waveActive = false;
+      /* День→Ночь: 10с, Ночь→День: полный отдых 60с */
+      var wasNight = (state.wave % 2 === 0);
+      state.waveTimer = wasNight ? CFG.WAVE_REST : 10;
+      /* Награда за завершение волны */
+      var reward = wasNight ? 35 : 15;
+      state.energy += reward;
+      showWaveText('WAVE COMPLETE ⚡+' + reward);
+    }
+  }
+
+  /* General shield aura & healer & Soldier formation buff */
+  var generals = [], healers = [], soldiers = [];
+  var ei;
+  for (ei = 0; ei < state.enemies.length; ei++) {
+    var en = state.enemies[ei];
+    if (!en.alive) continue;
+    if (en.def.special === 'shield') generals.push(en);
+    if (en.def.special === 'heal') healers.push(en);
+    if (en.type === 'soldier' && en.level === 1) soldiers.push(en);
+  }
+  for (ei = 0; ei < state.enemies.length; ei++) {
+    var e = state.enemies[ei];
+    if (!e.alive) continue;
+    e.shielded = false;
+    var ep = e.body.getPosition();
+    for (var gi = 0; gi < generals.length; gi++) {
+      var g = generals[gi];
+      if (g === e) continue;
+      var gp = g.body.getPosition();
+      var gdx = ep.x - gp.x, gdy = ep.y - gp.y;
+      if (gdx*gdx + gdy*gdy < 12) { e.shielded = true; break; }
+    }
+    for (var hi = 0; hi < healers.length; hi++) {
+      var h = healers[hi];
+      if (h === e) continue;
+      var hp2 = h.body.getPosition();
+      var hdx = ep.x - hp2.x, hdy = ep.y - hp2.y;
+      if (hdx*hdx + hdy*hdy < 8) {
+        e.hp = Math.min(e.hp + dt * 0.5, e.maxHp);
+      }
+    }
+  }
+
+  /* Lv.1 Soldier Formation buff: +15% HP per nearby soldier, max 3 stacks */
+  for (var si = 0; si < soldiers.length; si++) {
+    var soldier = soldiers[si];
+    soldier.formationStacks = 0;
+    var sp = soldier.body.getPosition();
+    for (var sj = 0; sj < soldiers.length; sj++) {
+      if (si === sj) continue;
+      var other = soldiers[sj];
+      var op = other.body.getPosition();
+      var sdx = sp.x - op.x, sdy = sp.y - op.y;
+      var soldierDist = Math.sqrt(sdx*sdx + sdy*sdy);
+      if (soldierDist < 2) {
+        soldier.formationStacks++;
+        if (soldier.formationStacks >= 3) break;
+      }
+    }
+    /* Apply HP buff: maxHp gets multiplier based on stacks */
+    var baseHp = (Array.isArray(soldier.def.hp)) ? soldier.def.hp[soldier.level] : soldier.def.hp;
+    var hpMult = state.nightHpMult || 1;
+    soldier.maxHp = baseHp * hpMult * (1 + soldier.formationStacks * 0.15);
+  }
+
+  /* Move enemies downward — walking wobble */
+  var baseY = getBaseY();
+  for (var i = state.enemies.length - 1; i >= 0; i--) {
+    e = state.enemies[i];
+
+    /* Dead body physics — still exists for pushback */
+    if (e.deathTimer >= 0) {
+      e.deathTimer -= dt;
+      if (e.deathTimer <= 0) {
+        /* Defer destruction to after step */
+        deferredDestroy.push(e.body);
+        state.enemies.splice(i, 1);
+      }
+      continue;
+    }
+    if (!e.alive) continue;
+
+    if (e.frozenTimer > 0) { e.frozenTimer -= dt; e.frozen = e.frozenTimer > 0; }
+    if (e.flashTimer > 0) e.flashTimer -= dt;
+
+    /* Lv.1 Scout Dodge: cooldown timer */
+    if (e.type === 'scout' && e.level === 1 && e.dodgeCooldown > 0) {
+      e.dodgeCooldown -= dt;
+    }
+
+    /* Lv.1 Scout Dodge: detect nearby projectiles */
+    if (e.type === 'scout' && e.level === 1 && e.dodgeCooldown <= 0) {
+      var scoutPos = e.body.getPosition();
+      for (var pi = 0; pi < state.projectiles.length; pi++) {
+        var proj = state.projectiles[pi];
+        if (!proj.alive) continue;
+        var ppos = proj.body.getPosition();
+        var pdx = ppos.x - scoutPos.x, pdy = ppos.y - scoutPos.y;
+        var pdist = Math.sqrt(pdx*pdx + pdy*pdy);
+        if (pdist < 2) {
+          /* Dodge perpendicular to projectile direction */
+          var pvel = proj.body.getLinearVelocity();
+          var perpX = -pvel.y, perpY = pvel.x;
+          var perpLen = Math.sqrt(perpX*perpX + perpY*perpY);
+          if (perpLen > 0.1) {
+            perpX /= perpLen; perpY /= perpLen;
+          }
+          var dodgeDir = (Math.random() < 0.5) ? 1 : -1;
+          var dodgeForce = 180 * e.body.getMass();
+          e.body.applyLinearImpulse(Vec2(perpX * dodgeDir * dodgeForce, perpY * dodgeDir * dodgeForce), e.body.getPosition());
+          e.dodgeCooldown = 1.5;
+          e.dodgeDir = { x: perpX * dodgeDir, y: perpY * dodgeDir };
+          spawnHitParticles(scoutPos.x, scoutPos.y, '#39ff14', 6);
+          break;
+        }
+      }
+    }
+
+    /* Lv.2 Scout Flicker: every 3s, alpha=0.3 for 0.8s, no collision */
+    if (e.type === 'scout' && e.level === 2) {
+      e.flickerTimer += dt;
+      if (e.flickerTimer >= 3 && !e.flickering) {
+        e.flickerTimer = 0;
+        e.flickering = true;
+        e.body.getFixtureList().setFilterData({
+          categoryBits: CFG.CAT_ENEMY,
+          maskBits: 0
+        });
+      }
+      if (e.flickering) {
+        e.flickerTimer += dt;
+        if (e.flickerTimer >= 0.8) {
+          e.flickering = false;
+          e.flickerTimer = 0;
+          e.body.getFixtureList().setFilterData({
+            categoryBits: CFG.CAT_ENEMY,
+            maskBits: CFG.CAT_PROJ
+          });
+        }
+      }
+    }
+
+    /* Lv.2 Soldier Block: every 4s, shield for 1s (frontal invulnerability) */
+    if (e.type === 'soldier' && e.level === 2) {
+      e.blockTimer += dt;
+      if (e.blockTimer >= 4) {
+        e.blockTimer = 0;
+        e.blockActive = true;
+      }
+      if (e.blockActive) {
+        e.blockTimer += dt;
+        if (e.blockTimer >= 1) {
+          e.blockActive = false;
+          e.blockTimer = 0;
+        }
+      }
+    }
+
+    /* Lv.1 Berserker Blood trail: rage>1.5x → particle trail + speed buff allies */
+    if (e.type === 'berserker' && e.level === 1 && e.rageSpeed > 1.5) {
+      ep = e.body.getPosition();
+      if (Math.random() < 0.3) {
+        addParticle(ep.x + (Math.random()-0.5)*0.3, ep.y + (Math.random()-0.5)*0.3,
+                    (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5,
+                    0.15, '#c62828', 0.6);
+      }
+      /* Speed buff to allies within r<3 */
+      for (var bi = 0; bi < state.enemies.length; bi++) {
+        var ally = state.enemies[bi];
+        if (ally === e || !ally.alive || ally.type === 'berserker') continue;
+        var ap = ally.body.getPosition();
+        var adx = ap.x - ep.x, ady = ap.y - ep.y;
+        var adist = Math.sqrt(adx*adx + ady*ady);
+        if (adist < 3) {
+          if (!ally.bloodTrailBuff) ally.bloodTrailBuff = 0;
+          ally.bloodTrailBuff = Math.max(ally.bloodTrailBuff, 2.0);
+        }
+      }
+    }
+
+    /* Decay blood trail buff */
+    if (e.bloodTrailBuff && e.bloodTrailBuff > 0) {
+      e.bloodTrailBuff -= dt;
+      if (e.bloodTrailBuff < 0) e.bloodTrailBuff = 0;
+    }
+
+    var speedMul = e.frozen ? 0.15 : e.rageSpeed;
+    /* Apply blood trail buff */
+    if (e.bloodTrailBuff && e.bloodTrailBuff > 0) {
+      speedMul *= 1.2;
+    }
+
+    ep = e.body.getPosition();
+    /* ФАЗА 12: Применяем множитель уровня к скорости */
+    var targetSpeed = e.def.speed * speedMul * (e.levelSpeedMult || 1.0);
+    var mass = e.body.getMass();
+
+    var fy = targetSpeed * CFG.ENEMY_DAMPING * mass;
+    var fx = 0;
+
+    var cx = CFG.WORLD_W / 2;
+    if (ep.x < 2) fx += (2 - ep.x) * 2 * mass;
+    else if (ep.x > CFG.WORLD_W - 2) fx += (CFG.WORLD_W - 2 - ep.x) * 2 * mass;
+    if (Math.abs(ep.x - cx) > CFG.WORLD_W * 0.35) {
+      fx += (cx - ep.x) * 0.15 * mass;
+    }
+
+    e.body.applyForceToCenter(Vec2(fx, fy));
+
+    /* Base breach */
+    if (ep.y > baseY) {
+      /* shield generator absorbs */
+      if (state.shieldCharges > 0) {
+        state.shieldCharges--;
+        spawnHitParticles(ep.x, baseY, '#4fc3f7', 8);
+        addParticle(ep.x, baseY, 0, 0, 1.5, 'rgba(79,195,247,0.3)', 0.4, 'ring');
+      } else {
+        state.lives--;
+        state.shakeTimer = 0.3;
+        state.shakeIntensity = 6;
+        spawnHitParticles(ep.x, baseY, '#ff1744', 12);
+      }
+      e.alive = false;
+      e.deathTimer = 0.01;
+      if (state.lives <= 0) {
+        state.gameOver = true;
+        document.getElementById('go-score').textContent = 'Счёт: ' + state.score;
+        document.getElementById('game-over-overlay').classList.add('open');
+      }
+    }
+    if (ep.x < -3 || ep.x > CFG.WORLD_W + 3) {
+      e.alive = false;
+      e.deathTimer = 0.01;
+    }
+  }
+
+  /* Update projectiles — mark dead ones for deferred destruction */
+  for (i = state.projectiles.length - 1; i >= 0; i--) {
+    var p = state.projectiles[i];
+    p.lifetime -= dt;
+    p.boltTimer += dt;
+    /* Обновляем плазменную систему */
+    updateProjectilePlasma(p);
+    if (!p.alive || p.lifetime <= 0) {
+      deferredDestroy.push(p.body);
+      state.projectiles.splice(i, 1);
+      continue;
+    }
+    var pp = p.body.getPosition();
+    var vel = p.body.getLinearVelocity();
+    var speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+
+    /* Взрыв при любой остановке - даже на высокой скорости */
+    if (speed < 2.0 && p.alive) {
+      var chargeNorm = p.charge / CFG.MAX_CHARGE; /* 0-1 */
+      var chargeMult = 0.5 + chargeNorm * 1.5;
+      spawnPlasmaExplosion(pp.x, pp.y, p.ammo.color, 25, chargeNorm);
+      spawnElectricSparks(pp.x, pp.y, p.ammo.color, 48);
+      /* Молнии взрыва — радиус совпадает с кольцами */
+      spawnExplosionBolts(pp.x, pp.y, p.ammo.color, 2.5 * chargeMult, 8 + Math.floor(chargeNorm * 8));
+      /* Создаём кратер при остановке снаряда на земле */
+      createShotCrater(pp.x, pp.y, chargeNorm);
+      p.alive = false;
+      deferredDestroy.push(p.body);
+      state.projectiles.splice(i, 1);
+      continue;
+    }
+
+    p.trail.push({ x: pp.x, y: pp.y, t: 0.3 });
+    if (p.trail.length > 16) p.trail.shift();
+    for (var j = p.trail.length - 1; j >= 0; j--) {
+      p.trail[j].t -= dt;
+      if (p.trail[j].t <= 0) p.trail.splice(j, 1);
+    }
+
+    /* Привязываем молнии снаряда к ближайшим врагам */
+    if (p.charge > 0 && p.plasmaNodes) {
+      var pChargeNorm = p.charge / CFG.MAX_CHARGE;
+      var seekRadius = 3.0 + pChargeNorm * 2.0; /* Радиус поиска врагов 3-5 */
+
+      /* Каждая молния ищет ближайшего врага */
+      for (var ni = 0; ni < p.plasmaNodes.length; ni++) {
+        var node = p.plasmaNodes[ni];
+        var closestEnemy = null;
+        var closestDist = seekRadius;
+
+        for (var eix = 0; eix < state.enemies.length; eix++) {
+          var enemy = state.enemies[eix];
+          if (!enemy.alive) continue;
+
+          var epos = enemy.body.getPosition();
+          var dx = epos.x - pp.x;
+          var dy = epos.y - pp.y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestEnemy = enemy;
+          }
+        }
+
+        /* Привязываем врага к ноде и обновляем относительные координаты */
+        node.targetEnemy = closestEnemy;
+        if (closestEnemy) {
+          var eposTarget = closestEnemy.body.getPosition();
+          node.enemyRelX = eposTarget.x - pp.x;
+          node.enemyRelY = eposTarget.y - pp.y;
+        }
+
+        /* Урон от каждой молнии раз в 0.3 секунды */
+        if (!node.damageTimer) node.damageTimer = 0;
+        node.damageTimer += dt;
+
+        if (node.damageTimer >= 0.3 && closestEnemy) {
+          node.damageTimer = 0;
+          var dmg = (2 + pChargeNorm * 3) * 0.05; /* Урон 0.1-0.25 за тик */
+          if (closestEnemy.shielded) dmg *= 0.5;
+          closestEnemy.hp -= dmg;
+          closestEnemy.flashTimer = 0.06;
+
+          /* Небольшие искры на месте попадания молнии */
+          var enemyPos = closestEnemy.body.getPosition();
+          spawnElectricSparks(enemyPos.x, enemyPos.y, p.ammo.color, 1);
+
+          if (closestEnemy.hp <= 0) {
+            killEnemy(closestEnemy);
+          }
+        }
+      }
+    }
+    if (pp.x < -3 || pp.x > CFG.WORLD_W + 3 || pp.y < -4 || pp.y > worldH + 3) {
+      /* Снаряд попал в землю — создать кратер */
+      if (pp.y > worldH - 2) {
+        createShotCrater(pp.x, pp.y, p.charge / CFG.MAX_CHARGE);
+        spawnHitParticles(pp.x, pp.y, p.ammo.color, 10);
+      }
+      deferredDestroy.push(p.body);
+      state.projectiles.splice(i, 1);
+    }
+  }
+
+  /* lightning arc visuals decay */
+  for (i = state.lightningArcs.length - 1; i >= 0; i--) {
+    state.lightningArcs[i].life -= dt;
+    if (state.lightningArcs[i].life <= 0) state.lightningArcs.splice(i, 1);
+  }
+
+  /* Обновляем молнии взрывов */
+  for (i = explosionBolts.length - 1; i >= 0; i--) {
+    explosionBolts[i].life -= dt;
+    if (explosionBolts[i].life <= 0) explosionBolts.splice(i, 1);
+  }
+
+  updateTesla(dt);
+  updateSingularities(dt);
+  updateParticles(dt);
+  updateLights(dt);
+  updateCraters(dt);
+
+  /* === PHYSICS STEP with deferred body management === */
+  /* First: destroy queued bodies BEFORE step */
+  processDeferredDestroy();
+
+  /* Run physics step */
+  insideStep = true;
+  world.step(CFG.PHYS_DT, CFG.VEL_ITER, CFG.POS_ITER);
+  insideStep = false;
+
+  /* After step: create any deferred bodies (scatter sub-projectiles, etc.) */
+  processDeferredBodies();
+
+  updateHUD();
+}
+
+/* ═══════════════ RENDERING ═══════════════ */
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+
+  if (state.shakeTimer > 0) {
+    var s = state.shakeIntensity * (state.shakeTimer / 0.3);
+    ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
+  }
+
+  drawBackground();       /* город + освещение */
+
+  /* Кратеры разрушения — рисуются ПОВЕРХ города */
+  for (var dci = 0; dci < destructionCraters.length; dci++) {
+    var dc = destructionCraters[dci];
+    drawCraterOnCtx(ctx, dc.x, dc.y, dc.r);
+  }
+
+  drawBaseLine();
+  drawSingularities();
+  drawEnemies();           /* враги ПОД облаками */
+  /* Маяк ПОД облаками когда lhAbove < 0.5 */
+  if (state.lhAbove < 0.5) {
+    ctx.save();
+    ctx.globalAlpha = 0.3 + state.lhAbove * 1.4;
+    drawLighthouse();
+    ctx.restore();
+  }
+  /* Снаряды ПОД облаками когда маяк не поднят */
+  if (!state.waveActive) {
+    drawProjectiles();
+    drawParticles();
+  }
+  /* Линия прицела ПОД облаками */
+  if (state.dragging) drawAimLine();
+  drawCloudLayer();        /* облака поверх врагов + луч перекрашивает в красный */
+  /* Маяк НАД облаками когда lhAbove >= 0.5 */
+  if (state.lhAbove >= 0.5) {
+    ctx.save();
+    ctx.globalAlpha = state.lhAbove;
+    drawLighthouse();
+    ctx.restore();
+  }
+  /* Снаряды НАД облаками в бою */
+  if (state.waveActive) {
+    drawProjectiles();
+    drawParticles();
+  }
+  drawLightningArcs();
+  if (state.dragging) drawAimUI();
+  ctx.restore();
+
+  /* ── Слой 1 облаков поверх всего (включая UI) ── */
+  drawCloudLayer1();
+
+  /* ── Круг-подсказка туториала ПОВЕРХ всех облаков ── */
+  if (_tut.state === 'hold' || (_tut.state === 'active' && _tutDragPct() < 0.2)) {
+    var lhTut = state.lighthouse;
+    var scTut = toScreen(lhTut.x, lhTut.y);
+    var rTut = 0.7 * scale;
+    var tutPulse = Math.sin(state.time * 3) * 0.3 + 0.7;
+    ctx.strokeStyle = 'rgba(255,171,0,' + (0.85 * tutPulse) + ')';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(scTut[0], scTut[1], rTut + 10, 0, TAU);
+    ctx.stroke();
+  }
+}
+
+/* ── Статичная поверхность города (кэшируется при resize) ── */
+var _surfCvs = null, _surfCtx = null;
+function generateSurface(w, h) {
+  _surfCvs = document.createElement('canvas');
+  _surfCvs.width = w; _surfCvs.height = h;
+  _surfCtx = _surfCvs.getContext('2d');
+
+  var sRes = 4; /* px per cell */
+  var sw = Math.ceil(w / sRes), sh = Math.ceil(h / sRes);
+  var sMap = new Float32Array(sw * sh);
+
+  /* value noise */
+  function shash(ix, iy) { var d = Math.sin(ix * 127.1 + iy * 311.7) * 43758.5453; return d - Math.floor(d); }
+  function sNoise(x, y) {
+    var ix = Math.floor(x), iy = Math.floor(y);
+    var fx = x - ix, fy = y - iy;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    var a = shash(ix,iy), b = shash(ix+1,iy), c = shash(ix,iy+1), d = shash(ix+1,iy+1);
+    return a + (b-a)*fx + (c-a)*fy + (a-b-c+d)*fx*fy;
+  }
+  var socts = [
+    { s:0.008, a:0.45 }, { s:0.022, a:0.25 }, { s:0.06, a:0.15 },
+    { s:0.14, a:0.10 }, { s:0.35, a:0.05 }
+  ];
+  for (var cy = 0; cy < sh; cy++) {
+    for (var cx = 0; cx < sw; cx++) {
+      var px = cx * sRes, py = cy * sRes, v = 0;
+      for (var oi = 0; oi < socts.length; oi++) v += sNoise(px * socts[oi].s, py * socts[oi].s) * socts[oi].a;
+      sMap[cy * sw + cx] = v;
+    }
+  }
+
+  /* рендер поверхности */
+  var img = _surfCtx.createImageData(w, h);
+  var dd = img.data;
+  for (var py2 = 0; py2 < h; py2++) {
+    var ty = Math.min(Math.floor(py2 / sRes), sh - 1);
+    var ty2 = Math.min(ty + 1, sh - 1);
+    var fy2 = (py2 % sRes) / sRes;
+    for (var px2 = 0; px2 < w; px2++) {
+      var tx = Math.min(Math.floor(px2 / sRes), sw - 1);
+      var tx2 = Math.min(tx + 1, sw - 1);
+      var fx2 = (px2 % sRes) / sRes;
+      var hv = sMap[ty*sw+tx]*(1-fx2)*(1-fy2) + sMap[ty*sw+tx2]*fx2*(1-fy2) + sMap[ty2*sw+tx]*(1-fx2)*fy2 + sMap[ty2*sw+tx2]*fx2*fy2;
+      var r, g, b2;
+      if (hv < 0.25) { var t0 = hv/0.25; r=4+t0*6; g=6+t0*8; b2=12+t0*10; }
+      else if (hv < 0.4) { var t1 = (hv-0.25)/0.15; r=10+t1*10; g=14+t1*8; b2=22+t1*4; }
+      else if (hv < 0.55) { var t2 = (hv-0.4)/0.15; r=20+t2*8; g=22+t2*6; b2=26+t2*2; }
+      else if (hv < 0.7) { var t3 = (hv-0.55)/0.15; r=28+t3*7; g=28+t3*8; b2=28+t3*5; }
+      else { var t4 = Math.min((hv-0.7)/0.3,1); r=35+t4*10; g=36+t4*12; b2=33+t4*8; }
+      var off = (py2*w+px2)*4;
+      dd[off]=r|0; dd[off+1]=g|0; dd[off+2]=b2|0; dd[off+3]=255;
+    }
+  }
+  _surfCtx.putImageData(img, 0, 0);
+
+  /* контурные линии */
+  _surfCtx.strokeStyle = 'rgba(80,100,120,0.06)';
+  _surfCtx.lineWidth = 1;
+  var cLvls = [0.25, 0.4, 0.55, 0.7];
+  for (var ci = 0; ci < cLvls.length; ci++) {
+    var lv = cLvls[ci];
+    _surfCtx.beginPath();
+    for (var cty = 0; cty < sh-1; cty++) {
+      for (var ctx2 = 0; ctx2 < sw-1; ctx2++) {
+        var v00 = sMap[cty*sw+ctx2], v10 = sMap[cty*sw+ctx2+1], v01 = sMap[(cty+1)*sw+ctx2];
+        if ((v00<lv)!==(v10<lv)) { var tt=(lv-v00)/(v10-v00); _surfCtx.moveTo((ctx2+tt)*sRes,cty*sRes); _surfCtx.lineTo((ctx2+tt)*sRes+1,cty*sRes+1); }
+        if ((v00<lv)!==(v01<lv)) { var tt2=(lv-v00)/(v01-v00); _surfCtx.moveTo(ctx2*sRes,(cty+tt2)*sRes); _surfCtx.lineTo(ctx2*sRes+1,(cty+tt2)*sRes+1); }
+      }
+    }
+    _surfCtx.stroke();
+  }
+
+  /* кратеры теперь создаются игроком выстрелами */
+  return [];
+}
+
+/* Кратеры разрушения (рисуются ПОВЕРХ города) */
+var destructionCraters = [];
+
+/* Рисовать кратер на канвасе */
+function drawCraterOnCtx(targetCtx, sx, sy, cr) {
+  /* Рваная тень вокруг кратера (низкое качество) */
+  targetCtx.fillStyle = 'rgba(0,0,0,0.4)';
+  for (var si = 0; si < 40; si++) {
+    var angle = (si / 40) * TAU + Math.random() * 0.3;
+    var dist = cr * (1.1 + Math.random() * 0.4);
+    var px = sx + Math.cos(angle) * dist;
+    var py = sy + Math.sin(angle) * dist;
+    var pSize = 1 + Math.random() * 2;
+    targetCtx.fillRect(px - pSize/2, py - pSize/2, pSize, pSize);
+  }
+
+  /* Основная тёмная заливка — перекрывает город */
+  targetCtx.fillStyle = 'rgba(5,5,10,1)';
+  targetCtx.beginPath(); targetCtx.arc(sx,sy,cr,0,TAU); targetCtx.fill();
+
+  /* Обводка кратера */
+  targetCtx.strokeStyle = 'rgba(255,100,50,0.15)'; targetCtx.lineWidth = 1.2;
+  targetCtx.beginPath(); targetCtx.arc(sx,sy,cr,0,TAU); targetCtx.stroke();
+
+  /* Тень внутри */
+  targetCtx.fillStyle = 'rgba(0,0,0,0.3)';
+  targetCtx.beginPath(); targetCtx.arc(sx+cr*0.1,sy+cr*0.1,cr*0.7,0,TAU); targetCtx.fill();
+
+  /* Внешняя обводка */
+  targetCtx.strokeStyle = 'rgba(255,60,20,0.08)'; targetCtx.lineWidth = 2;
+  targetCtx.beginPath(); targetCtx.arc(sx,sy,cr*1.3,0,TAU); targetCtx.stroke();
+
+  /* Яркая точка в центре */
+  dDot(targetCtx, sx, sy, cr * 0.4, 0.6);
+}
+
+/* Создать кратер выстрелом */
+function createShotCrater(worldX, worldY, charge) {
+  if (!_surfCvs) return;
+  /* В бою кратеры не создаются */
+  if (state.waveActive) return;
+  var sx = worldX * scale, sy = worldY * scale;
+  var cr = 12 + charge * 20;
+  cityCraters.push({ x: sx, y: sy, r: cr });
+  if (!state.firstColony) {
+    /* Первый кратер требует минимум 40% заряда (charge приходит нормализованный 0-1) */
+    if (charge < 0.4) return;
+    /* Первый кратер — ПОД городом (на _surfCtx) */
+    drawCraterOnCtx(_surfCtx, sx, sy, cr);
+    state.firstColony = true;
+    var tutBonus = tutOnFire();
+    state.energy += 10; /* базовая награда за первый город */
+    tutFinish();
+    showWaveText('☣️ FIRST COLONY ☢️' + (tutBonus > 0 ? ' ⚡+' + tutBonus : ''));
+    /* Начать город из этого кратера */
+    var numRays = 3 + Math.floor(Math.random() * 4);
+    for (var ri = 0; ri < numRays; ri++) {
+      cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+    }
+  } else {
+    /* Последующие кратеры — ПОВЕРХ города (разрушение) */
+    destructionCraters.push({ x: sx, y: sy, r: cr });
+
+    /* Остановить строительство города */
+    cityQueue.length = 0;
+
+    /* Затухнуть существующий город (не исчезает полностью) */
+    for (var fi = 0; fi < cityFrozen.length; fi++) {
+      if (!cityFrozen[fi].fade) cityFrozen[fi].fade = 0;
+      cityFrozen[fi].fade = Math.max(cityFrozen[fi].fade, 0.3); /* затухает до 30% */
+    }
+
+    /* Начать новый рост из нового кратера */
+    var numRays2 = 3 + Math.floor(Math.random() * 4);
+    for (var ri2 = 0; ri2 < numRays2; ri2++) {
+      cityQueue.push({ type:'line', x:sx, y:sy, a:(ri2/numRays2)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+    }
+  }
+}
+
+/* ── Постепенный рост города (очередь с прогрессом) ── */
+var cityQueue = [];
+var cityFrozen = []; /* замороженные элементы — не тухнут */
+var cityTier = -1; /* текущий tier при котором строился город */
+var cityCraters = []; /* список кратеров */
+var THICK_THIN = 0.25, THICK_MED = 0.6, THICK_THICK = 0.7;
+
+function rr(min, max) { return min + Math.random() * (max - min); }
+function inB(x, y) { return x > 20 && x < W - 20 && y > 20 && y < H - 20; }
+function chooseThick() { var r = Math.random(); return r < 0.5 ? THICK_THIN : r < 0.85 ? THICK_MED : THICK_THICK; }
+function getCol(th2, a, colorType) {
+  if (a === undefined) a = 1;
+  if (colorType === 'blue') return 'rgba(50,150,255,' + (a*0.6) + ')';
+  if (colorType === 'red') return 'rgba(255,50,80,' + (a*0.6) + ')';
+  if (colorType === 'pink') return 'rgba(255,100,200,' + (a*0.9) + ')';
+  if (colorType === 'lime') return 'rgba(150,255,100,' + (a*0.9) + ')';
+  if (th2 === THICK_THICK) return 'rgba(255,120,0,' + (a*0.9) + ')';
+  if (th2 === THICK_MED)   return 'rgba(255,160,50,' + (a*0.7) + ')';
+  return 'rgba(255,200,100,' + (a*0.4) + ')';
+}
+
+function dLine(cx2,x1,y1,x2,y2,th2,progress,colorType) {
+  if (!progress) progress = 1;
+  var px = x1 + (x2 - x1) * progress, py = y1 + (y2 - y1) * progress;
+  cx2.strokeStyle = getCol(th2, 1, colorType); cx2.lineWidth = th2; cx2.lineCap = 'round';
+  cx2.beginPath(); cx2.moveTo(x1,y1); cx2.lineTo(px,py); cx2.stroke();
+  if (th2 === THICK_THICK && !colorType) {
+    cx2.strokeStyle = getCol(th2, 0.3); cx2.lineWidth = th2 + 2;
+    cx2.beginPath(); cx2.moveTo(x1,y1); cx2.lineTo(px,py); cx2.stroke();
+  }
+}
+function dArc(cx2,x,y,rad,sa,ea,th2,progress) {
+  if (!progress) progress = 1;
+  var curEnd = sa + (ea - sa) * progress;
+  cx2.strokeStyle = getCol(th2); cx2.lineWidth = th2; cx2.lineCap = 'round';
+  cx2.beginPath(); cx2.arc(x,y,rad,sa,curEnd); cx2.stroke();
+}
+function dDot(cx2,x,y,rad,a,colorType) {
+  if (a === undefined) a = 1;
+  var gr = cx2.createRadialGradient(x,y,0,x,y,rad);
+  if (colorType === 'pink') {
+    gr.addColorStop(0, 'rgba(255,100,200,' + a + ')');
+    gr.addColorStop(0.5, 'rgba(255,50,150,' + (a*0.5) + ')');
+    gr.addColorStop(1, 'rgba(255,0,100,0)');
+  } else if (colorType === 'lime') {
+    gr.addColorStop(0, 'rgba(150,255,100,' + a + ')');
+    gr.addColorStop(0.5, 'rgba(100,255,50,' + (a*0.5) + ')');
+    gr.addColorStop(1, 'rgba(50,255,0,0)');
+  } else if (colorType === 'blue') {
+    gr.addColorStop(0, 'rgba(50,150,255,' + a + ')');
+    gr.addColorStop(0.5, 'rgba(30,100,200,' + (a*0.5) + ')');
+    gr.addColorStop(1, 'rgba(0,50,150,0)');
+  } else if (colorType === 'red') {
+    gr.addColorStop(0, 'rgba(255,50,80,' + a + ')');
+    gr.addColorStop(0.5, 'rgba(200,30,50,' + (a*0.5) + ')');
+    gr.addColorStop(1, 'rgba(150,0,20,0)');
+  } else {
+    gr.addColorStop(0, 'rgba(255,200,100,' + a + ')');
+    gr.addColorStop(0.5, 'rgba(255,140,0,' + (a*0.5) + ')');
+    gr.addColorStop(1, 'rgba(255,100,0,0)');
+  }
+  cx2.fillStyle = gr; cx2.beginPath(); cx2.arc(x,y,rad,0,TAU); cx2.fill();
+}
+function dPoly(cx2,x,y,rad,sides,rot,th2,progress) {
+  if (!progress) progress = 1;
+  cx2.strokeStyle = getCol(th2); cx2.lineWidth = th2; cx2.lineCap = 'round';
+  cx2.beginPath();
+  var dSides = Math.ceil(sides * progress);
+  for (var i = 0; i <= dSides; i++) {
+    var a2 = rot + (i/sides)*TAU;
+    var px2 = x + Math.cos(a2)*rad, py2 = y + Math.sin(a2)*rad;
+    if (i === 0) cx2.moveTo(px2,py2); else cx2.lineTo(px2,py2);
+  }
+  cx2.stroke();
+}
+
+var OPS = ['line','branch','arc','spider','cdots','circle','polygon'];
+var WEIGHTS = [30,25,15,8,7,5,10];
+var totalW = 0; for (var wi = 0; wi < WEIGHTS.length; wi++) totalW += WEIGHTS[wi];
+function chooseOp() {
+  var r = Math.random() * totalW;
+  for (var i = 0; i < WEIGHTS.length; i++) { r -= WEIGHTS[i]; if (r <= 0) return OPS[i]; }
+  return 'line';
+}
+
+function endPt(t) {
+  if (t.type === 'line' || t.type === 'branch') return [t.x + Math.cos(t.a)*t.l, t.y + Math.sin(t.a)*t.l];
+  if (t.type === 'arc') { var ea = t.sa + t.sw; return [t.x + Math.cos(ea)*t.r, t.y + Math.sin(ea)*t.r]; }
+  return [t.x, t.y];
+}
+
+function spawnCity(task) {
+  if (task.gen > 12 || Math.random() > 0.85) return;
+  var ep = endPt(task);
+  if (!inB(ep[0], ep[1])) return;
+  var nxt = chooseOp(), nth = Math.random() < 0.7 ? task.th : chooseThick(), ng = task.gen + 1;
+  var spd = rr(0.0002, 0.0006); /* очень медленная скорость — дни роста */
+  /* Редкие цвета: синий (5%), красный (2%), только для line/точек и только тонкие */
+  var colorType = null;
+  if (Math.random() < 0.05) colorType = 'blue';
+  else if (Math.random() < 0.02) colorType = 'red';
+  if (colorType) nth = THICK_THIN; /* цветные только тонкие */
+  /* Некоторые элементы угасают не до конца */
+  var fadeLevel = Math.random() < 0.15 ? rr(0.2, 0.5) : 0;
+  switch (nxt) {
+    case 'line':    cityQueue.push({ type:'line', x:ep[0], y:ep[1], a:(task.a||0)+rr(-0.3,0.3), l:rr(15,50), th:nth, gen:ng, prog:0, spd:spd, color:colorType, fade:fadeLevel }); break;
+    case 'branch':  cityQueue.push({ type:'branch', x:ep[0], y:ep[1], a:task.a||rr(0,TAU), l:rr(20,40), br:2+Math.floor(Math.random()*2), th:nth, gen:ng, prog:0, spd:spd, fade:fadeLevel }); break;
+    case 'arc':     cityQueue.push({ type:'arc', x:ep[0], y:ep[1], r:rr(15,40), sa:rr(0,TAU), sw:rr(PI*0.5,PI*1.5), th:nth, gen:ng, prog:0, spd:spd, fade:fadeLevel }); break;
+    case 'spider':  cityQueue.push({ type:'spider', x:ep[0], y:ep[1], r:rr(20,50), sp:Math.floor(rr(5,12)), th:THICK_THIN, gen:ng, prog:0, spd:spd, fade:fadeLevel }); break;
+    case 'cdots':   cityQueue.push({ type:'cdots', x:ep[0], y:ep[1], r:rr(15,35), dots:Math.floor(rr(6,14)), color:colorType, gen:ng, prog:0, spd:spd, fade:fadeLevel }); break;
+    case 'circle':  cityQueue.push({ type:'circle', x:ep[0], y:ep[1], r:rr(10,30), th:nth, gen:ng, prog:0, spd:spd, fade:fadeLevel }); break;
+    case 'polygon': cityQueue.push({ type:'polygon', x:ep[0], y:ep[1], r:rr(10,35), sides:Math.floor(rr(3,8)), rot:rr(0,TAU), th:nth, gen:ng, prog:0, spd:spd, fade:fadeLevel }); break;
+  }
+  if (Math.random() < 0.3) {
+    cityQueue.push({ type:'line', x:ep[0], y:ep[1], a:(task.a||0)+rr(PI/3,PI), l:rr(10,30), th:THICK_THIN, gen:ng+1, prog:0, spd:rr(0.0002, 0.0006) });
+  }
+}
+
+function startCityGrowth(craters) {
+  cityQueue = [];
+  cityCraters = craters;
+  /* Выбираем кратер ближайший к маяку */
+  var lhX = state.lighthouse.x * scale, lhY = state.lighthouse.y * scale;
+  var nearest = null, minDist = Infinity;
+  for (var i = 0; i < craters.length; i++) {
+    var dx = craters[i].x - lhX, dy = craters[i].y - lhY;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < minDist) { minDist = dist; nearest = craters[i]; }
+  }
+  if (!nearest) return;
+  var sx = nearest.x, sy = nearest.y;
+  dDot(_surfCtx, sx, sy, 8, 0.8);
+  var numRays = 3 + Math.floor(Math.random() * 4);
+  for (var ri = 0; ri < numRays; ri++) {
+    cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+  }
+}
+
+function updateCityGrowth(dt) {
+  if (cityQueue.length === 0) return;
+  /* Мягкое затухание предыдущих линий пока город растёт */
+  _surfCtx.fillStyle = 'rgba(0,0,0,0.02)';
+  _surfCtx.fillRect(0, 0, W, H);
+  var completed = [];
+  for (var i = cityQueue.length - 1; i >= 0; i--) {
+    var t = cityQueue[i];
+    t.prog += t.spd * (dt * 60); /* нормализация к 60fps */
+    if (t.prog > 1) t.prog = 1;
+    switch (t.type) {
+      case 'line': {
+        var ex = t.x + Math.cos(t.a)*t.l, ey = t.y + Math.sin(t.a)*t.l;
+        dLine(_surfCtx, t.x,t.y,ex,ey,t.th,t.prog,t.color); break;
+      }
+      case 'branch': {
+        var spA = PI / (t.br+1);
+        for (var bi = 0; bi < t.br; bi++) {
+          var ba = t.a - spA*(t.br-1)/2 + spA*bi;
+          dLine(_surfCtx, t.x,t.y, t.x+Math.cos(ba)*t.l, t.y+Math.sin(ba)*t.l, t.th, t.prog);
+        } break;
+      }
+      case 'arc': dArc(_surfCtx, t.x,t.y,t.r,t.sa,t.sa+t.sw,t.th,t.prog); break;
+      case 'spider': {
+        dDot(_surfCtx, t.x,t.y,3,t.prog);
+        var spikesShow = Math.ceil(t.sp * t.prog);
+        for (var spi = 0; spi < spikesShow; spi++) {
+          var spa2 = (spi/t.sp)*TAU;
+          var lenProg = (spi < spikesShow - 1) ? 1 : ((t.prog * t.sp) % 1);
+          dLine(_surfCtx, t.x,t.y, t.x+Math.cos(spa2)*t.r*lenProg, t.y+Math.sin(spa2)*t.r*lenProg, t.th, 1);
+        }
+        if (t.prog > 0.5) {
+          var ringProg = (t.prog - 0.5) * 2;
+          _surfCtx.strokeStyle = getCol(THICK_THIN, ringProg * 0.5); _surfCtx.lineWidth = THICK_THIN;
+          _surfCtx.beginPath(); _surfCtx.arc(t.x,t.y,t.r*0.5,0,TAU*ringProg); _surfCtx.stroke();
+        }
+        break;
+      }
+      case 'cdots': {
+        var dotsShow = Math.ceil(t.dots * t.prog);
+        for (var di = 0; di < dotsShow; di++) {
+          var da = (di/t.dots)*TAU;
+          var dotAlpha = (di < dotsShow - 1) ? 0.8 : 0.8 * ((t.prog * t.dots) % 1);
+          dDot(_surfCtx, t.x+Math.cos(da)*t.r, t.y+Math.sin(da)*t.r, 2+Math.random()*2, dotAlpha, t.color);
+        } break;
+      }
+      case 'circle': {
+        _surfCtx.strokeStyle = getCol(t.th); _surfCtx.lineWidth = t.th;
+        _surfCtx.beginPath(); _surfCtx.arc(t.x,t.y,t.r,0,TAU*t.prog); _surfCtx.stroke(); break;
+      }
+      case 'polygon': dPoly(_surfCtx, t.x,t.y,t.r,t.sides,t.rot,t.th,t.prog); break;
+    }
+    if (t.prog >= 1) {
+      /* С вероятностью 5% элемент "замерзает" и больше не тухнет */
+      if (Math.random() < 0.05) {
+        cityFrozen.push({ type: t.type, x: t.x, y: t.y, a: t.a, l: t.l, r: t.r, sa: t.sa, sw: t.sw, th: t.th, br: t.br, sp: t.sp, dots: t.dots, sides: t.sides, rot: t.rot, prog: 1, color: t.color });
+        /* При заморозке с шансом 50% создаём новый seed в радиусе */
+        if (Math.random() < 0.5) {
+          var ep = endPt(t);
+          var angle = rr(0, TAU);
+          var dist = rr(20, 60);
+          var nx = ep[0] + Math.cos(angle) * dist, ny = ep[1] + Math.sin(angle) * dist;
+          if (inB(nx, ny)) {
+            dDot(_surfCtx, nx, ny, 6, 0.7);
+            var numNewRays = 2 + Math.floor(Math.random() * 3);
+            for (var nri = 0; nri < numNewRays; nri++) {
+              cityQueue.push({ type:'line', x:nx, y:ny, a:(nri/numNewRays)*TAU + rr(0,0.3), l:rr(20,50), th:chooseThick(), gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+            }
+          }
+        }
+      } else if (t.fade > 0) {
+        /* Элемент угасает не до конца */
+        cityFrozen.push({ type: t.type, x: t.x, y: t.y, a: t.a, l: t.l, r: t.r, sa: t.sa, sw: t.sw, th: t.th, br: t.br, sp: t.sp, dots: t.dots, sides: t.sides, rot: t.rot, prog: 1, color: t.color, fade: t.fade });
+      }
+      /* Под конец строительства — яркие одинокие точки розовые и лайм */
+      if (t.gen > 8 && Math.random() < 0.08) {
+        var brightColor = Math.random() < 0.5 ? 'pink' : 'lime';
+        var ep2 = endPt(t);
+        dDot(_surfCtx, ep2[0], ep2[1], rr(3,6), 1, brightColor);
+        cityFrozen.push({ type: 'brightdot', x: ep2[0], y: ep2[1], r: rr(3,6), color: brightColor, prog: 1 });
+      }
+      completed.push(t);
+      cityQueue.splice(i, 1);
+    }
+  }
+  /* Рисуем замороженные элементы поверх затухающего слоя */
+  for (var fi = 0; fi < cityFrozen.length; fi++) {
+    var f = cityFrozen[fi];
+    /* Применяем fadeLevel если есть */
+    if (f.fade && f.fade > 0) {
+      var oldAlpha = _surfCtx.globalAlpha;
+      _surfCtx.globalAlpha = f.fade;
+    }
+    switch (f.type) {
+      case 'line': {
+        var ex2 = f.x + Math.cos(f.a)*f.l, ey2 = f.y + Math.sin(f.a)*f.l;
+        dLine(_surfCtx, f.x,f.y,ex2,ey2,f.th,1,f.color); break;
+      }
+      case 'branch': {
+        var spA2 = PI / (f.br+1);
+        for (var bi2 = 0; bi2 < f.br; bi2++) {
+          var ba2 = f.a - spA2*(f.br-1)/2 + spA2*bi2;
+          dLine(_surfCtx, f.x,f.y, f.x+Math.cos(ba2)*f.l, f.y+Math.sin(ba2)*f.l, f.th, 1);
+        } break;
+      }
+      case 'arc': dArc(_surfCtx, f.x,f.y,f.r,f.sa,f.sa+f.sw,f.th,1); break;
+      case 'spider': {
+        dDot(_surfCtx, f.x,f.y,3,1);
+        for (var spi2 = 0; spi2 < f.sp; spi2++) {
+          var spa3 = (spi2/f.sp)*TAU;
+          dLine(_surfCtx, f.x,f.y, f.x+Math.cos(spa3)*f.r, f.y+Math.sin(spa3)*f.r, f.th, 1);
+        }
+        _surfCtx.strokeStyle = getCol(THICK_THIN, 0.5); _surfCtx.lineWidth = THICK_THIN;
+        _surfCtx.beginPath(); _surfCtx.arc(f.x,f.y,f.r*0.5,0,TAU); _surfCtx.stroke();
+        break;
+      }
+      case 'cdots': {
+        for (var di2 = 0; di2 < f.dots; di2++) {
+          var da2 = (di2/f.dots)*TAU;
+          dDot(_surfCtx, f.x+Math.cos(da2)*f.r, f.y+Math.sin(da2)*f.r, 2+Math.random()*2, 0.8, f.color);
+        } break;
+      }
+      case 'brightdot': {
+        dDot(_surfCtx, f.x, f.y, f.r, 1, f.color); break;
+      }
+      case 'circle': {
+        _surfCtx.strokeStyle = getCol(f.th); _surfCtx.lineWidth = f.th;
+        _surfCtx.beginPath(); _surfCtx.arc(f.x,f.y,f.r,0,TAU); _surfCtx.stroke(); break;
+      }
+      case 'polygon': dPoly(_surfCtx, f.x,f.y,f.r,f.sides,f.rot,f.th,1); break;
+    }
+    /* Восстанавливаем alpha если изменяли */
+    if (f.fade && f.fade > 0) {
+      _surfCtx.globalAlpha = 1;
+    }
+  }
+  for (var ci = 0; ci < completed.length; ci++) spawnCity(completed[ci]);
+}
+
+function drawBackground() {
+  /* Статичная поверхность (земля) — город начинается из кратеров выстрелов */
+  if (!_surfCvs) {
+    generateSurface(W, H);
+    cityTier = state.colonyTier;
+  }
+  /* При первой прокачке базы — новый кратер, новый рост */
+  if (state.colonyTier > cityTier && cityTier >= 0) {
+    var rndCrater = cityCraters[Math.floor(Math.random() * cityCraters.length)];
+    if (rndCrater) {
+      dDot(_surfCtx, rndCrater.x, rndCrater.y, 8, 0.8);
+      var numRays2 = 3 + Math.floor(Math.random() * 4);
+      for (var ri2 = 0; ri2 < numRays2; ri2++) {
+        cityQueue.push({ type:'line', x:rndCrater.x, y:rndCrater.y, a:(ri2/numRays2)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+      }
+    }
+    cityTier = state.colonyTier;
+  }
+  ctx.drawImage(_surfCvs, 0, 0);
+
+  /* Subtle animated shimmer — мерцающие круги поверх поверхности */
+  var t = state.time * 0.3;
+  ctx.globalAlpha = 0.025;
+  for (var si = 0; si < 5; si++) {
+    var sx2 = (Math.sin(t + si * 1.3) * 0.5 + 0.5) * W;
+    var sy2 = (Math.cos(t * 0.7 + si * 2.1) * 0.5 + 0.5) * H;
+    var shimR = 80 + si * 30;
+    var grad = ctx.createRadialGradient(sx2, sy2, 0, sx2, sy2, shimR);
+    grad.addColorStop(0, 'rgba(40,60,80,1)');
+    grad.addColorStop(1, 'rgba(40,60,80,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(sx2, sy2, shimR, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  /* Динамическое освещение смога от взрывов и снарядов */
+  drawSmogLighting();
+}
+
+/* Облака рисуются отдельно ПОВЕРХ врагов — см. render() */
+function drawCloudLayer() {
+  renderCloudsToCtx(ctx, W, H, [0]); /* слой 0 - под игрой */
+}
+
+function drawCloudLayer1() {
+  renderCloudsToCtx(ctx, W, H, [1, 2]); /* верхний слой + тонкий третий слой — поверх всего */
+}
+
+function drawSmogLighting() {
+  if (tw === 0) return;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter'; // Аддитивное наложение для свечения
+
+  /* Освещение от источников света (взрывов) */
+  for (var i = 0; i < state.lights.length; i++) {
+    var light = state.lights[i];
+    var sc = toScreen(light.x, light.y);
+    var sx = sc[0], sy = sc[1];
+    var intensity = light.life / light.maxLife;
+    var radius = light.radius * scale * 1.5;
+
+    /* Извлекаем RGB из цвета */
+    var c = light.color.replace('#','');
+    if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+    var r = parseInt(c.substring(0,2),16);
+    var g = parseInt(c.substring(2,4),16);
+    var b = parseInt(c.substring(4,6),16);
+
+    /* Рисуем свет с модуляцией по heightmap */
+    drawLightWithHeightmap(sx, sy, radius, r, g, b, intensity * 0.6);
+  }
+
+  /* Освещение от летящих снарядов */
+  for (var pi = 0; pi < state.projectiles.length; pi++) {
+    var proj = state.projectiles[pi];
+    if (!proj.alive) continue;
+    var pos = proj.body.getPosition();
+    var psc = toScreen(pos.x, pos.y);
+    var psx = psc[0], psy = psc[1];
+    var pRadius = proj.radius * scale * 4;
+
+    var pc = proj.ammo.color.replace('#','');
+    if (pc.length === 3) pc = pc[0]+pc[0]+pc[1]+pc[1]+pc[2]+pc[2];
+    var pr = parseInt(pc.substring(0,2),16);
+    var pg = parseInt(pc.substring(2,4),16);
+    var pb = parseInt(pc.substring(4,6),16);
+
+    drawLightWithHeightmap(psx, psy, pRadius, pr, pg, pb, 0.25);
+  }
+
+  /* Освещение от маяка */
+  var lh = state.lighthouse;
+  var lsc = toScreen(lh.x, lh.y);
+  var lsx = lsc[0], lsy = lsc[1];
+  var ammoColor = getActiveAmmoColor();
+  var lRadius = 0.7 * scale * 6;
+
+  var lc = ammoColor.replace('#','');
+  if (lc.length === 3) lc = lc[0]+lc[0]+lc[1]+lc[1]+lc[2]+lc[2];
+  var lr = parseInt(lc.substring(0,2),16);
+  var lg = parseInt(lc.substring(2,4),16);
+  var lb = parseInt(lc.substring(4,6),16);
+
+  var pulse = Math.sin(state.lighthousePulse) * 0.1 + 0.9;
+  drawLightWithHeightmap(lsx, lsy, lRadius, lr, lg, lb, 0.35 * pulse);
+
+  ctx.restore();
+}
+
+/* Рисует освещение с модуляцией по heightmap - освещает только облака */
+function drawLightWithHeightmap(cx, cy, radius, r, g, b, maxIntensity) {
+  var steps = 32; // Количество концентрических кругов
+  var angularSteps = 48; // Количество точек на окружности
+
+  for (var ri = 0; ri < steps; ri++) {
+    var rad = (ri / steps) * radius;
+    var nextRad = ((ri + 1) / steps) * radius;
+    var falloff = 1 - (ri / steps); /* Затухание от центра */
+    var baseIntensity = maxIntensity * falloff * falloff;
+
+    ctx.beginPath();
+    for (var ai = 0; ai <= angularSteps; ai++) {
+      var angle = (ai / angularSteps) * TAU;
+      var px = cx + Math.cos(angle) * rad;
+      var py = cy + Math.sin(angle) * rad;
+
+      /* Сэмплируем heightmap */
+      var h = getHeightAt(px, py);
+      /* Усиливаем контраст для модуляции */
+      var cloudness = (h - 0.5) * 2.5 + 0.5;
+      cloudness = Math.max(0, Math.min(1, cloudness));
+
+      /* Черные области (провалы) не освещаются */
+      if (cloudness < 0.3) cloudness = 0;
+      else cloudness = (cloudness - 0.3) / 0.7; /* Ремап 0.3-1 -> 0-1 */
+
+      var intensity = baseIntensity * cloudness;
+
+      if (ai === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        /* Рисуем небольшие сегменты с индивидуальной прозрачностью */
+        var prevAngle = ((ai - 1) / angularSteps) * TAU;
+        var ppx = cx + Math.cos(prevAngle) * rad;
+        var ppy = cy + Math.sin(prevAngle) * rad;
+
+        ctx.fillStyle = 'rgba('+r+','+g+','+b+','+intensity+')';
+        ctx.beginPath();
+        ctx.moveTo(ppx, ppy);
+        ctx.lineTo(px, py);
+        var npx = cx + Math.cos(angle) * nextRad;
+        var npy = cy + Math.sin(angle) * nextRad;
+        ctx.lineTo(npx, npy);
+        var nppx = cx + Math.cos(prevAngle) * nextRad;
+        var nppy = cy + Math.sin(prevAngle) * nextRad;
+        ctx.lineTo(nppx, nppy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+}
+
+function drawBaseLine() {
+  var baseY = getBaseY() * scale;
+  var t = state.basePulse;
+  var alpha = 0.5 + Math.sin(t * 2) * 0.2;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,23,68,' + alpha + ')';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([14, 9]);
+  ctx.lineDashOffset = -state.time * 35;
+  ctx.beginPath();
+  ctx.moveTo(0, baseY);
+  ctx.lineTo(W, baseY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  var zg = ctx.createLinearGradient(0, baseY, 0, H);
+  zg.addColorStop(0, 'rgba(255,23,68,' + (0.08 + Math.sin(t) * 0.03) + ')');
+  zg.addColorStop(1, 'rgba(255,23,68,0)');
+  ctx.fillStyle = zg;
+  ctx.fillRect(0, baseY, W, H - baseY);
+
+  /* reactor zone warning */
+  ctx.font = '600 10px "Chakra Petch"';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,23,68,' + (0.35 + Math.sin(t * 3) * 0.12) + ')';
+  ctx.fillText('⚠️🟠 REACTOR ZONE ☢️☣️', W / 2, baseY + 14);
+  /* shield charges indicator */
+  if (state.shieldCharges > 0) {
+    ctx.fillStyle = 'rgba(79,195,247,0.6)';
+    ctx.font = '600 9px "Chakra Petch"';
+    ctx.fillText('🛡×' + state.shieldCharges, W / 2, baseY + 26);
+  }
+  ctx.restore();
+}
+
+function getActiveAmmoColor() {
+  return AMMO[state.selectedAmmo].color;
+}
+
+/* Lighthouse image */
+var lighthouseImg = null;
+var lighthouseImgLoaded = false;
+(function() {
+  var img = new Image();
+  img.onload = function() { lighthouseImg = img; lighthouseImgLoaded = true; };
+  img.src = 'https://pfst.cf2.poecdn.net/base/image/9778eae433ae8dfc45f442cc9d7945f5486a45beee092dd94757236ffe29c4de?w=1024&h=1024';
+})();
+
+function drawLighthouse() {
+  var lh = state.lighthouse;
+  var sc = toScreen(lh.x, lh.y);
+  var sx = sc[0], sy = sc[1];
+  var r = 0.7 * scale;
+  var pulse = Math.sin(state.lighthousePulse) * 0.15 + 1;
+  var ammoColor = getActiveAmmoColor();
+
+  /* Outer glow — ammo colored */
+  var glow = ctx.createRadialGradient(sx, sy, r * 0.2, sx, sy, r * 2.8 * pulse);
+  glow.addColorStop(0, hexToRgba(ammoColor, 0.15));
+  glow.addColorStop(0.5, hexToRgba(ammoColor, 0.04));
+  glow.addColorStop(1, hexToRgba(ammoColor, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sx, sy, r * 2.8 * pulse, 0, TAU);
+  ctx.fill();
+
+  /* Луч маяка теперь рисуется внутри renderCloudsToCtx (попиксельно окрашивает облака) */
+
+  /* Красная заливка луча — как у reactor zone */
+  if (state.colonized) {
+    var beamRot = state.time * 1.5;
+    var scanAngle = 0.25;
+    var scanLen = r * CFG.SCANNER_RANGE_MULT * 3;
+    var t = state.basePulse;
+    var beamAlpha = 0.08 + Math.sin(t) * 0.03;
+
+    for (var bi = 0; bi < 2; bi++) {
+      var bAngle = beamRot + bi * PI;
+      var bx1 = Math.cos(bAngle - scanAngle) * scanLen;
+      var by1 = Math.sin(bAngle - scanAngle) * scanLen;
+      var bx2 = Math.cos(bAngle + scanAngle) * scanLen;
+      var by2 = Math.sin(bAngle + scanAngle) * scanLen;
+
+      var bg = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, scanLen);
+      bg.addColorStop(0, 'rgba(255,23,68,' + beamAlpha + ')');
+      bg.addColorStop(1, 'rgba(255,23,68,0)');
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + bx1, sy + by1);
+      ctx.lineTo(sx + bx2, sy + by2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /* Draw lighthouse image */
+  if (lighthouseImgLoaded && lighthouseImg) {
+    var imgSize = r * 4;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.drawImage(lighthouseImg, -imgSize/2, -imgSize/2, imgSize, imgSize);
+    ctx.restore();
+  } else {
+    /* Fallback: simple circle while image loads */
+    ctx.fillStyle = '#0a1118';
+    ctx.strokeStyle = ammoColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  /* Tesla coil indicator */
+  if (perkLvl('tesla') > 0) {
+    ctx.strokeStyle = hexToRgba('#b388ff', 0.15 + Math.sin(state.time * 8) * 0.1);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 2.2, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /* Charge ring — overcharge aware */
+  if (state.dragging && state.charge > 0) {
+    var maxCharge2 = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
+    var chargeRatio = state.charge / maxCharge2;
+    ctx.strokeStyle = 'rgba(255,' + Math.floor(171 * (1 - chargeRatio)) + ',0,0.85)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r + 10, -PI / 2, -PI / 2 + chargeRatio * TAU);
+    ctx.stroke();
+  }
+
+}
+
+function drawAimLine() {
+  if (!state.dragging || !state.dragCurrent) return;
+  var lh = state.lighthouse;
+  var dc = state.dragCurrent;
+  var scLH = toScreen(lh.x, lh.y);
+  var scDC = toScreen(dc.x, dc.y);
+
+  /* Вектор направления выстрела (от пальца К маяку = направление снаряда) */
+  var dx = lh.x - dc.x;
+  var dy = lh.y - dc.y;
+  var dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 0.1) return;
+
+  var nx = dx / dist;
+  var ny = dy / dist;
+
+  /* Вычисляем скорость снаряда как при выстреле */
+  var dragMax = state.waveActive ? 14 : CFG.DRAG_MAX;
+  var maxVel = 18 + state.colonyTier * 2;
+  var speed = Math.min(dist * CFG.VEL_FACTOR, maxVel);
+
+  /* Damping как при выстреле */
+  var rangeLvl = perkLvl('range');
+  var baseDamping = 0.8;
+  if (rangeLvl === 1) baseDamping = 0.5;
+  else if (rangeLvl === 2) baseDamping = 0.2;
+
+  /* Дальность полёта: d = v0/damping * (1 - e^(-damping * lifetime)) */
+  var lifetime = CFG.PROJ_LIFETIME;
+  var flyDist = speed / baseDamping * (1 - Math.exp(-baseDamping * lifetime));
+
+  /* Переводим мировое расстояние в экранное */
+  var lineLength = flyDist * scale;
+
+  /* Линия идёт от маяка в направлении выстрела */
+  var scLHx = scLH[0], scLHy = scLH[1];
+  var sx1 = scLHx;
+  var sy1 = scLHy;
+  var sx2 = scLHx + nx * lineLength;
+  var sy2 = scLHy + ny * lineLength;
+
+  /* Линия прицела - стиль как у reactor zone */
+  var alpha = 0.5 + Math.sin(state.time * 2) * 0.2;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(120, 20, 20, ' + alpha + ')';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([14, 9]);
+  ctx.lineDashOffset = -state.time * 35; /* анимация движения пунктира */
+  ctx.beginPath();
+  ctx.moveTo(sx1, sy1);
+  ctx.lineTo(sx2, sy2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawAimUI() {
+  var lh = state.lighthouse;
+  var dc = state.dragCurrent;
+  var sc1 = toScreen(lh.x, lh.y);
+  var sx = sc1[0], sy = sc1[1];
+  var ammo = AMMO[state.selectedAmmo];
+  var col = ammo.color;
+
+  /* Вычисляем радиус снаряда как при выстреле */
+  var r = CFG.PROJ_RADIUS * (ammo.id === 'explosive' ? 1.4 : ammo.id === 'scatter' ? 1.2 : ammo.id === 'piercing' ? 0.9 : 1);
+
+  /* Вычисляем текущий заряд от 0 до 1 */
+  var maxCharge = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
+  var chargeRatio = Math.min(state.charge / maxCharge, 1);
+
+  /* Пересоздаём снаряд если сменился тип боеприпаса или сильно изменился заряд */
+  var needRecreate = !state.previewProj || state.previewProj.ammo !== ammo;
+  if (state.previewProj && state.previewProj.lastChargeRatio !== undefined) {
+    var chargeDiff = Math.abs(chargeRatio - state.previewProj.lastChargeRatio);
+    /* Пересоздать если заряд перешёл порог (каждые ~17% для смены количества молний) */
+    if (chargeDiff > 0.08) needRecreate = true;
+  }
+
+  if (needRecreate) {
+    state.previewProj = {
+      radius: r,
+      ammo: ammo,
+      plasmaParticles: [],
+      plasmaNodes: [],
+      lastChargeRatio: chargeRatio
+    };
+    initProjectilePlasma(state.previewProj, chargeRatio);
+  }
+
+  /* Обновляем плазму preview снаряда */
+  updateProjectilePlasma(state.previewProj);
+
+  /* Рисуем плазменные молнии 1в1 как у летящего снаряда */
+  drawProjectilePlasma(ctx, sx, sy, state.previewProj);
+
+  /* Ядро/капсула 1в1 как у летящего снаряда */
+  var coreR = r * scale * 0.55;
+  var coreGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, coreR);
+  coreGrad.addColorStop(0, '#ffffff');
+  coreGrad.addColorStop(0.4, col);
+  coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(sx, sy, coreR, 0, TAU);
+  ctx.fill();
+}
+
+function drawLightningArcs() {
+  for (var i = 0; i < state.lightningArcs.length; i++) {
+    var arc = state.lightningArcs[i], a = arc.life / 0.3;
+    var s1 = toScreen(arc.x1, arc.y1), s2 = toScreen(arc.x2, arc.y2);
+    /* Используем цвет из объекта, если есть, иначе дефолтный голубой */
+    var arcColor = arc.color || '#64c8ff';
+    ctx.strokeStyle = hexToRgba(arcColor, Math.min(a, 0.8));
+    ctx.lineWidth = 2 * a;
+    ctx.beginPath();
+    ctx.moveTo(s1[0], s1[1]);
+    var segs = 4;
+    for (var j = 1; j <= segs; j++) {
+      var t = j / segs;
+      var mx = s1[0] + (s2[0] - s1[0]) * t;
+      var my = s1[1] + (s2[1] - s1[1]) * t;
+      if (j < segs) { mx += (Math.random() - 0.5) * 12 * a; my += (Math.random() - 0.5) * 12 * a; }
+      ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+  }
+
+  /* Молнии взрывов */
+  for (var ei = 0; ei < explosionBolts.length; ei++) {
+    var bolt = explosionBolts[ei];
+    var aVal = bolt.life / bolt.maxLife;
+    var sc = toScreen(bolt.wx, bolt.wy);
+
+    ctx.strokeStyle = bolt.color;
+    ctx.lineWidth = 0.8 + aVal * 0.7;
+    ctx.shadowColor = bolt.color;
+    ctx.shadowBlur = 12 * aVal;
+    ctx.globalAlpha = aVal * 0.9;
+
+    ctx.beginPath();
+    ctx.moveTo(sc[0], sc[1]);
+    for (var si = 0; si < bolt.segments.length; si++) {
+      var seg = bolt.segments[si];
+      ctx.lineTo(sc[0] + seg.x2 * scale, sc[1] + seg.y2 * scale);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawSingularities() {
+  for (var i = 0; i < state.singularities.length; i++) {
+    var s = state.singularities[i], ratio = s.life / s.maxLife;
+    var sc = toScreen(s.x, s.y), sx = sc[0], sy = sc[1], r = 3.5 * scale * ratio;
+    var g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+    g.addColorStop(0, 'rgba(100,0,200,' + (0.4 * ratio) + ')');
+    g.addColorStop(0.4, 'rgba(50,0,100,' + (0.2 * ratio) + ')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180,136,255,' + (0.5 * ratio) + ')';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 0.5, state.time * 3, state.time * 3 + PI * 1.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 0.3, state.time * -5, state.time * -5 + PI);
+    ctx.stroke();
+  }
+}
+
+function drawEnemies() {
+  for (var i = 0; i < state.enemies.length; i++) {
+    var e = state.enemies[i];
+    if (e.deathTimer >= 0 && !e.alive) {
+      var alpha = Math.max(0, e.deathTimer / 0.45);
+      drawEnemyBody(e, alpha, 1 + (1 - alpha) * 0.4);
+      continue;
+    }
+    if (!e.alive) continue;
+    /* Lv.2 Scout Flicker: alpha=0.3 when flickering */
+    var flickerAlpha = (e.type === 'scout' && e.level === 2 && e.flickering) ? 0.3 : 1;
+    drawEnemyBody(e, flickerAlpha, 1);
+  }
+}
+
+function drawEnemyBody(e, alpha, scaleMul) {
+  var pos = e.body.getPosition();
+  var angle = e.body.getAngle();
+  var sc = toScreen(pos.x, pos.y);
+  var sx = sc[0], sy = sc[1];
+  /* ФАЗА 12: size×1.1 для Lv.2 */
+  var lvlSizeMult = (e.level === 2) ? 1.1 : 1.0;
+  var r = e.def.r * scale * scaleMul * lvlSizeMult;
+  var sides = e.def.sides;
+
+  /* Walking bob */
+  var bobOffset = 0;
+  if (e.alive && !e.frozen) {
+    bobOffset = Math.abs(Math.sin(e.stepBob)) * r * 0.08;
+  }
+  sy -= bobOffset;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+  ctx.globalAlpha = alpha;
+
+  /* Shield aura */
+  if (e.shielded && alpha === 1) {
+    ctx.strokeStyle = 'rgba(255,214,0,0.35)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 5, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /* Frozen overlay */
+  if (e.frozen) {
+    ctx.fillStyle = 'rgba(128,222,234,0.15)';
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 3, 0, TAU);
+    ctx.fill();
+  }
+
+  var color = e.def.color;
+  /* Ночью инвертируем цвет врагов */
+  if (state.wave % 2 === 0) {
+    var cc = color.replace('#','');
+    if (cc.length === 3) cc = cc[0]+cc[0]+cc[1]+cc[1]+cc[2]+cc[2];
+    var cr = 255 - parseInt(cc.substring(0,2),16);
+    var cg = 255 - parseInt(cc.substring(2,4),16);
+    var cb = 255 - parseInt(cc.substring(4,6),16);
+    color = 'rgb(' + cr + ',' + cg + ',' + cb + ')';
+  }
+  if (e.flashTimer > 0) color = '#ffffff';
+
+  ctx.fillStyle = color;
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 1.5;
+
+  if (sides === 0) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r*0.4, 0); ctx.lineTo(r*0.4, 0);
+    ctx.moveTo(0, -r*0.4); ctx.lineTo(0, r*0.4);
+    ctx.stroke();
+  } else if (e.type === 'berserker') {
+    /* Зубчатый ромб */
+    ctx.beginPath();
+    ctx.moveTo(0, -r); ctx.lineTo(r*0.7, 0); ctx.lineTo(0, r); ctx.lineTo(-r*0.7, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    /* Rage визуалы */
+    if (e.rageSpeed > 1.0 && alpha === 1) {
+      var rageLevel = (e.rageSpeed - 1.0) / 1.5; /* 0..1 */
+
+      /* Трещины на теле */
+      if (rageLevel > 0.1) {
+        ctx.strokeStyle = 'rgba(255,255,100,' + (rageLevel * 0.8) + ')';
+        ctx.lineWidth = 1.5;
+        for (var ci = 0; ci < 4; ci++) {
+          var ca = (ci / 4) * TAU;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(ca) * r * 0.6, Math.sin(ca) * r * 0.6);
+          ctx.stroke();
+        }
+      }
+
+      /* Пульсирующий glow при 1.5+ */
+      if (rageLevel >= 0.33) {
+        var breathe = 0.5 + Math.sin(state.time * 8) * 0.5;
+        ctx.strokeStyle = 'rgba(255,100,0,' + (breathe * rageLevel * 0.6) + ')';
+        ctx.lineWidth = 2 + breathe * 2;
+        ctx.shadowColor = 'rgba(255,100,0,0.6)';
+        ctx.shadowBlur = 10 * breathe;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 4 + breathe * 3, 0, TAU);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      /* Пламя при 2.0+ */
+      if (rageLevel >= 0.67) {
+        ctx.shadowColor = 'rgba(255,50,0,0.8)';
+        ctx.shadowBlur = 15;
+        for (var fi = 0; fi < 6; fi++) {
+          var fa = (fi / 6) * TAU + state.time * 3;
+          var flicker = Math.sin(state.time * 10 + fi) * 0.3 + 0.7;
+          var fx = Math.cos(fa) * (r + 5 + flicker * 5);
+          var fy = Math.sin(fa) * (r + 5 + flicker * 5);
+          ctx.fillStyle = 'rgba(255,' + Math.floor(100 + flicker * 50) + ',0,' + (flicker * 0.7) + ')';
+          ctx.beginPath();
+          ctx.arc(fx, fy, 2 + flicker * 2, 0, TAU);
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+      }
+    }
+  } else if (e.type === 'scout') {
+    /* Вытянутый треугольник с neon glow */
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.4);
+    ctx.lineTo(r * 0.6, r * 0.7);
+    ctx.lineTo(-r * 0.6, r * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    for (var si = 0; si < sides; si++) {
+      var a = (si / sides) * TAU - PI / 2;
+      var px = Math.cos(a) * r, py = Math.sin(a) * r;
+      if (si === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  /* Lv.1 Scout Dodge: ghost trail */
+  if (e.type === 'scout' && e.level === 1 && e.dodgeCooldown > 0 && e.dodgeDir && alpha === 1) {
+    var trailAlpha = e.dodgeCooldown / 1.5;
+    ctx.globalAlpha = trailAlpha * 0.4;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    for (var ti = 1; ti <= 3; ti++) {
+      var tOffset = ti * r * 0.5;
+      ctx.save();
+      ctx.translate(-e.dodgeDir.x * tOffset, -e.dodgeDir.y * tOffset);
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 1.4);
+      ctx.lineTo(r * 0.6, r * 0.7);
+      ctx.lineTo(-r * 0.6, r * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = alpha;
+  }
+
+  /* Lv.2 Scout Flicker: glitch effect */
+  if (e.type === 'scout' && e.level === 2 && e.flickering && alpha === 1) {
+    ctx.globalAlpha = 0.5;
+    for (var gi = 0; gi < 3; gi++) {
+      var gOffset = (Math.random() - 0.5) * r * 0.3;
+      ctx.save();
+      ctx.translate(gOffset, gOffset);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 1.4);
+      ctx.lineTo(r * 0.6, r * 0.7);
+      ctx.lineTo(-r * 0.6, r * 0.7);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = alpha;
+  }
+
+  /* Soldier crosshair (крест-визир) */
+  if (e.type === 'soldier') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-r*0.4, 0); ctx.lineTo(r*0.4, 0);
+    ctx.moveTo(0, -r*0.4); ctx.lineTo(0, r*0.4);
+    ctx.stroke();
+  }
+
+  /* Lv.1 Soldier Formation lines (линии связи к союзникам) */
+  if (e.type === 'soldier' && e.level === 1 && e.formationStacks > 0 && alpha === 1) {
+    ctx.strokeStyle = 'rgba(120,144,156,0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 2]);
+    var soldierPos = e.body.getPosition();
+    for (var fsi = 0; fsi < state.enemies.length; fsi++) {
+      var other = state.enemies[fsi];
+      if (other === e || other.type !== 'soldier' || other.level !== 1 || !other.alive) continue;
+      var otherPos = other.body.getPosition();
+      var sdx = soldierPos.x - otherPos.x, sdy = soldierPos.y - otherPos.y;
+      var dist = Math.sqrt(sdx*sdx + sdy*sdy);
+      if (dist < 2) {
+        var otherSc = toScreen(otherPos.x, otherPos.y);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo((otherSc[0] - sx), (otherSc[1] - sy));
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+  }
+
+  /* Lv.2 Soldier Block shield (фронтальный щит когда blockActive) */
+  if (e.type === 'soldier' && e.level === 2 && e.blockActive && alpha === 1) {
+    ctx.save();
+    var eVel = e.body.getLinearVelocity();
+    var blockAngle = Math.atan2(eVel.y, eVel.x);
+    ctx.rotate(blockAngle - angle);
+    ctx.fillStyle = 'rgba(79,195,247,0.3)';
+    ctx.strokeStyle = 'rgba(79,195,247,0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 4, -Math.PI/2, Math.PI/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* General star */
+  if (e.type === 'general') {
+    ctx.fillStyle = '#fff9c4';
+    ctx.beginPath();
+    for (var si2 = 0; si2 < 5; si2++) {
+      var outerA = (si2 / 5) * TAU - PI / 2;
+      var innerA = outerA + PI / 5;
+      var or2 = r * 0.45, ir = r * 0.2;
+      if (si2 === 0) ctx.moveTo(Math.cos(outerA)*or2, Math.sin(outerA)*or2);
+      else ctx.lineTo(Math.cos(outerA)*or2, Math.sin(outerA)*or2);
+      ctx.lineTo(Math.cos(innerA)*ir, Math.sin(innerA)*ir);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /* Tank armor rings */
+  if (e.type === 'tank' || e.type === 'juggernaut') {
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    for (var ai = 0; ai < 3; ai++) {
+      var ir2 = r * (0.4 + ai * 0.2);
+      ctx.beginPath();
+      ctx.arc(0, 0, ir2, 0, TAU);
+      ctx.stroke();
+    }
+  }
+
+  /* Walking legs */
+  if (e.alive && !e.frozen && alpha === 1) {
+    var legPhase = e.stepBob;
+    ctx.strokeStyle = hexToRgba(color, 0.5);
+    ctx.lineWidth = 1.5;
+    for (var li = 0; li < 2; li++) {
+      var la = (li === 0 ? -0.4 : 0.4) + Math.sin(legPhase + li * PI) * 0.15;
+      var lx1 = Math.cos(PI/2 + la) * (r * 0.6);
+      var ly1 = Math.sin(PI/2 + la) * (r * 0.6);
+      var lx2 = Math.cos(PI/2 + la) * (r * 0.8);
+      var ly2 = Math.sin(PI/2 + la) * (r * 0.8);
+      ctx.beginPath();
+      ctx.moveTo(lx1, ly1);
+      ctx.lineTo(lx2, ly2);
+      ctx.stroke();
+    }
+  }
+
+  /* ФАЗА 12: Level визуалы */
+  if (e.level > 0 && alpha === 1) {
+    ctx.save();
+    ctx.translate(0, -r - 8);
+
+    if (e.level === 1) {
+      /* Lv.1: Шеврон */
+      ctx.fillStyle = 'rgba(255,214,0,0.7)';
+      ctx.beginPath();
+      ctx.moveTo(0, -4);
+      ctx.lineTo(3, -1);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(-3, -1);
+      ctx.closePath();
+      ctx.fill();
+
+      /* Слабый glow */
+      ctx.shadowColor = 'rgba(255,214,0,0.3)';
+      ctx.shadowBlur = 4;
+      ctx.strokeStyle = 'rgba(255,214,0,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.15, 0, TAU);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (e.level === 2) {
+      /* Lv.2: Корона */
+      ctx.fillStyle = 'rgba(255,193,7,0.9)';
+      ctx.strokeStyle = 'rgba(255,235,59,1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-4, 0);
+      ctx.lineTo(-3, -4);
+      ctx.lineTo(-1, -2);
+      ctx.lineTo(0, -5);
+      ctx.lineTo(1, -2);
+      ctx.lineTo(3, -4);
+      ctx.lineTo(4, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      /* Яркий glow */
+      ctx.shadowColor = 'rgba(255,193,7,0.6)';
+      ctx.shadowBlur = 8;
+      ctx.strokeStyle = 'rgba(255,193,7,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.2, 0, TAU);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  /* HP bar */
+  if (e.alive && e.hp < e.maxHp && alpha === 1) {
+    var barW = r * 1.8;
+    var barH = 3;
+    var barX = sx - barW / 2;
+    var barY = sy - r - 9;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+    var ratio = Math.max(0, e.hp / e.maxHp);
+    var hpColor = ratio > 0.5 ? '#66bb6a' : ratio > 0.25 ? '#ffa726' : '#ef5350';
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(barX, barY, barW * ratio, barH);
+  }
+}
+
+function drawProjectiles() {
+  for (var pi = 0; pi < state.projectiles.length; pi++) {
+    var p = state.projectiles[pi];
+    if (!p.alive) continue;
+    var pos = p.body.getPosition();
+    var sc = toScreen(pos.x, pos.y);
+    var sx = sc[0], sy = sc[1];
+    var r = p.radius * scale;
+    var col = p.ammo.color;
+
+    /* Плазменные молнии */
+    drawProjectilePlasma(ctx, sx, sy, p);
+
+    /* Ядро/капсула */
+    var coreR = r * 0.55;
+    var coreGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, coreR);
+    coreGrad.addColorStop(0, '#ffffff');
+    coreGrad.addColorStop(0.4, col);
+    coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, coreR, 0, TAU);
+    ctx.fill();
+  }
+}
+
+function drawParticles() {
+  for (var i = 0; i < state.particles.length; i++) {
+    var p = state.particles[i];
+    var sc = toScreen(p.x, p.y);
+    var sx = sc[0], sy = sc[1];
+    var lifeRatio = p.life / p.maxLife;
+    ctx.globalAlpha = lifeRatio;
+    ctx.fillStyle = p.color;
+    var r = p.r * scale * lifeRatio;
+    if (p.type === 'ring') {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 3 * lifeRatio;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, TAU);
+      ctx.stroke();
+    } else if (p.type === 'square') {
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(state.time * 5);
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+      ctx.restore();
+    } else if (p.type === 'diamond') {
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - r);
+      ctx.lineTo(sx + r * 0.7, sy);
+      ctx.lineTo(sx, sy + r);
+      ctx.lineTo(sx - r * 0.7, sy);
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.type === 'bolt') {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 1.5 * lifeRatio;
+      var bLen = r * 3;
+      var ba2 = Math.random() * TAU;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(ba2)*bLen*0.5, sy + Math.sin(ba2)*bLen*0.5);
+      ctx.lineTo(sx + Math.cos(ba2+0.5)*bLen, sy + Math.sin(ba2+0.5)*bLen);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, TAU);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ═══════════════ HELPER: hex color to rgba ═══════════════ */
+function hexToRgba(hex, a) {
+  if (hex.charAt(0) === 'r') return hex;
+  var c = hex.replace('#','');
+  if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+  var rv = parseInt(c.substring(0,2),16);
+  var gv = parseInt(c.substring(2,4),16);
+  var bv = parseInt(c.substring(4,6),16);
+  return 'rgba('+rv+','+gv+','+bv+','+a+')';
+}
+
+/* ═══════════════ HUD ═══════════════ */
+function updateHUD() {
+  document.getElementById('hud-lives').textContent = '❤ ' + state.lives;
+  var isNight = (state.wave % 2 === 0);
+  var dayNum = isNight ? state.wave / 2 : Math.ceil(state.wave / 2);
+  document.getElementById('hud-wave').textContent = (isNight ? '\uD83C\uDF19 NIGHT ' : '\u2600 DAY ') + dayNum;
+  document.getElementById('hud-score').textContent = state.score;
+  document.getElementById('hud-energy').textContent = '⚡ ' + state.energy;
+
+  /* Показываем кнопку поднятия маяка только в затишье после колонизации */
+  var raiseBtn = document.getElementById('raise-btn');
+  var ammoBar = document.getElementById('ammo-bar');
+  var shopBtn = document.getElementById('shop-btn');
+  var inRest = state.colonized && state.firstColony && !state.waveActive && !state.gameOver;
+  if (inRest) {
+    raiseBtn.classList.add('visible');
+    var timeLeft = Math.ceil(state.waveTimer);
+    var label = '\u2206 BEACON (' + timeLeft + 's) \u2206';
+    raiseBtn.childNodes[0].textContent = label + '\n';
+    var glitch = raiseBtn.querySelector('.btn__glitch');
+    if (glitch) glitch.textContent = label;
+  } else {
+    raiseBtn.classList.remove('visible');
+  }
+  /* Скрываем оружие и колонию в бою */
+  if (state.waveActive) {
+    ammoBar.classList.add('combat-hide');
+    shopBtn.classList.add('combat-hide');
+  } else {
+    ammoBar.classList.remove('combat-hide');
+    shopBtn.classList.remove('combat-hide');
+  }
+  /* Показываем магазин только: после первой колонии, в затишье перед днём (после ночи) */
+  var nextIsDay = (state.wave > 0 && state.wave % 2 === 0); /* wave чётная и >0 = последняя была ночь → следующая день */
+  if (state.firstColony && nextIsDay && !state.waveActive) {
+    shopBtn.style.opacity = '1';
+  } else {
+    shopBtn.style.opacity = '0';
+  }
+}
+
+function showWaveText(text) {
+  var el = document.getElementById('wave-text');
+  el.textContent = text;
+  el.style.opacity = '1';
+  setTimeout(function(){ el.style.opacity = '0'; }, 1800);
+}
+
+/* ═══════════════ AMMO BAR ═══════════════ */
+function buildAmmoBar() {
+  var bar = document.getElementById('ammo-bar');
+  bar.innerHTML = '';
+  AMMO.forEach(function(a, i) {
+    var unlocked = state.colonyTier >= a.tierReq;
+    var btn = document.createElement('div');
+    btn.className = 'ammo-btn' + (i === state.selectedAmmo ? ' active' : '') + (!unlocked ? ' locked' : '');
+    btn.title = a.name + (unlocked ? '' : ' (нужен: ' + COLONY_TIERS[a.tierReq].name + ')');
+
+    /* Создаём canvas превью — плазменные молнии */
+    var previewCvs = document.createElement('canvas');
+    previewCvs.width = 40;
+    previewCvs.height = 40;
+    var pCtx = previewCvs.getContext('2d');
+    var cx = 20, cy = 20, pr = 14;
+
+    /* Молнии из центра наружу */
+    pCtx.strokeStyle = a.color;
+    pCtx.lineWidth = 1.5;
+    pCtx.shadowColor = a.color;
+    pCtx.shadowBlur = 6;
+    pCtx.globalAlpha = 0.85;
+
+    for (var bi = 0; bi < 6; bi++) {
+      var ba = (bi / 6) * TAU + Math.random() * 0.3;
+      var px = cx, py = cy;
+      pCtx.beginPath();
+      pCtx.moveTo(cx, cy);
+      for (var seg = 0; seg < 4; seg++) {
+        var frac = (seg + 1) / 4;
+        var tx = cx + Math.cos(ba) * pr * frac + (Math.random() - 0.5) * 4;
+        var ty = cy + Math.sin(ba) * pr * frac + (Math.random() - 0.5) * 4;
+        pCtx.lineTo(tx, ty);
+        px = tx; py = ty;
+      }
+      pCtx.stroke();
+    }
+    pCtx.shadowBlur = 0;
+    pCtx.globalAlpha = 1;
+
+    btn.appendChild(previewCvs);
+    btn.addEventListener('click', function() {
+      if (!unlocked) return;
+      state.selectedAmmo = i;
+      buildAmmoBar();
+    });
+    bar.appendChild(btn);
+  });
+}
+
+/* ═══════════════ SHOP ═══════════════ */
+function buildShop() {
+  var box = document.getElementById('shop-content');
+  box.innerHTML = '';
+  var ct = state.colonyTier, ti = COLONY_TIERS[ct];
+
+  /* colony card */
+  var sec1 = document.createElement('div'); sec1.className = 'shop-section';
+  var label1 = document.createElement('div'); label1.className = 'shop-section-title'; label1.textContent = 'Эволюция колонии'; sec1.appendChild(label1);
+  var card = document.createElement('div'); card.className = 'colony-card';
+  var hdr = '<div class="colony-header"><span class="colony-icon">' + ti.icon + '</span><div><div class="colony-name">' + ti.name + '</div><div class="colony-tier-label">Уровень ' + (ct + 1) + ' / ' + COLONY_TIERS.length + '</div></div></div>';
+  var bonuses = '<div class="colony-bonuses">' + ti.desc + '</div>';
+  var dots = '<div class="colony-progress">';
+  for (var d = 0; d < COLONY_TIERS.length; d++) dots += '<div class="colony-dot' + (d < ct ? ' filled' : '') + (d === ct ? ' current' : '') + '"></div>';
+  dots += '</div>';
+  card.innerHTML = hdr + bonuses + dots;
+
+  if (ct < COLONY_TIERS.length - 1) {
+    var next = COLONY_TIERS[ct + 1];
+    var ebtn = document.createElement('button'); ebtn.className = 'evolve-btn';
+    ebtn.textContent = '⬆ ' + next.name + ' — ⚡' + next.cost;
+    ebtn.addEventListener('click', function() {
+      if (state.energy >= next.cost) {
+        state.energy -= next.cost;
+        state.colonyTier++;
+        var bonus = COLONY_TIERS[state.colonyTier];
+        state.lives += bonus.bonusLives - COLONY_TIERS[state.colonyTier - 1].bonusLives;
+        buildShop(); buildAmmoBar(); updateHUD();
+      }
+    });
+    card.appendChild(ebtn);
+  } else {
+    var mx = document.createElement('button'); mx.className = 'evolve-btn maxed'; mx.textContent = 'МАКСИМАЛЬНЫЙ УРОВЕНЬ'; card.appendChild(mx);
+  }
+  sec1.appendChild(card); box.appendChild(sec1);
+
+  /* perks section */
+  var sec2 = document.createElement('div'); sec2.className = 'shop-section';
+  var label2 = document.createElement('div'); label2.className = 'shop-section-title'; label2.textContent = 'Перки'; sec2.appendChild(label2);
+
+  PERK_DEFS.forEach(function(pd) {
+    var lvl = perkLvl(pd.id), maxed = lvl >= pd.maxLvl, locked = ct < pd.tierReq;
+    var div = document.createElement('div'); div.className = 'perk-item' + (locked ? ' locked-tier' : '');
+    var descText = maxed ? pd.descs[pd.maxLvl - 1] : (lvl > 0 ? pd.descs[lvl - 1] : pd.descs[0]);
+    var nextDesc = !maxed && lvl < pd.maxLvl ? pd.descs[lvl] : '';
+    var lvlDots = '';
+    for (var d2 = 0; d2 < pd.maxLvl; d2++) lvlDots += '<span style="color:' + (d2 < lvl ? 'var(--cyan)' : 'rgba(255,255,255,0.15)') + '">●</span>';
+
+    div.innerHTML = '<div class="perk-icon">' + pd.icon + '</div><div class="perk-info"><div class="perk-name">' + pd.name + ' <span class="perk-lvl">' + lvlDots + '</span></div>' +
+      '<div class="perk-desc">' + (maxed ? descText : nextDesc) + '</div>' +
+      (locked ? '<div class="perk-tier-req">Нужно: ' + COLONY_TIERS[pd.tierReq].icon + ' ' + COLONY_TIERS[pd.tierReq].name + '</div>' : '') +
+      '</div>';
+
+    if (!locked && !maxed) {
+      var cost = pd.costs[lvl];
+      var pbtn = document.createElement('button'); pbtn.className = 'perk-buy'; pbtn.textContent = '⚡' + cost;
+      pbtn.addEventListener('click', (function(perkDef, perkCost) {
+        return function() {
+          if (state.energy >= perkCost) { state.energy -= perkCost; state.perks[perkDef.id]++; buildShop(); updateHUD(); }
+        };
+      })(pd, cost));
+      div.appendChild(pbtn);
+    } else if (maxed) {
+      var mx2 = document.createElement('div'); mx2.className = 'perk-buy maxed'; mx2.textContent = 'МАКС'; div.appendChild(mx2);
+    }
+    sec2.appendChild(div);
+  });
+
+  /* ammo unlocks info */
+  var hasLocked = false;
+  /* Боеприпасы больше не продаются в магазине - они открываются автоматически с прокачкой колонии */
+
+  box.appendChild(sec2);
+}
+
+document.getElementById('shop-btn').addEventListener('click', function() {
+  buildShop();
+  document.getElementById('shop-overlay').classList.add('open');
+});
+document.getElementById('shop-close').addEventListener('click', function() {
+  document.getElementById('shop-overlay').classList.remove('open');
+});
+document.getElementById('shop-overlay').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('open');
+});
+
+/* ═══════════════ RAISE LIGHTHOUSE ═══════════════ */
+document.getElementById('raise-btn').addEventListener('click', function() {
+  if (!state.waveActive && !state.gameOver) {
+    startWave();
+  }
+});
+
+/* ═══════════════ GAME OVER ═══════════════ */
+document.getElementById('restart-btn').addEventListener('click', function() {
+  document.getElementById('game-over-overlay').classList.remove('open');
+  resetGame();
+});
+
+function resetGame() {
+  for (var i = 0; i < state.enemies.length; i++) {
+    try { world.destroyBody(state.enemies[i].body); } catch(_e) { /* noop */ }
+  }
+  for (var j = 0; j < state.projectiles.length; j++) {
+    try { world.destroyBody(state.projectiles[j].body); } catch(_e) { /* noop */ }
+  }
+  deferredBodies.length = 0;
+  deferredDestroy.length = 0;
+  craters.length = 0;
+  /* Пересоздаём облака заново */
+  initCloudMap(W, H);
+  accumulator = 0; // Сбрасываем накопитель времени
+  state = freshState();
+  state.lighthouse.x = CFG.WORLD_W / 2;
+  state.lighthouse.y = worldH - CFG.BASE_OFFSET - CFG.LIGHTHOUSE_OFFSET;
+  _surfCvs = null;
+  cityQueue = [];
+  cityFrozen = [];
+  destructionCraters = [];
+  explosionBolts = [];
+  cityTier = -1;
+  buildAmmoBar();
+  updateHUD();
+  /* Автоколонизация (кнопка COLONIZE временно скрыта) */
+  state.colonized = true;
+  state.waveTimer = CFG.WAVE_REST;
+  state.energy += 1;
+  tutStart();
+}
+
+/* ═══════════════ GAME LOOP ═══════════════ */
+var lastTime = 0;
+var accumulator = 0;
+var FIXED_DT = 1/60; // Фиксированный временной шаг 60 FPS
+function gameLoop(timestamp) {
+  var frameTime = Math.min((timestamp - lastTime) / 1000, 0.25);
+  lastTime = timestamp;
+  accumulator += frameTime;
+
+  if (scale > 0 && isFinite(worldH)) {
+    // Обновляем игру с фиксированным шагом
+    while (accumulator >= FIXED_DT) {
+      update(FIXED_DT);
+      accumulator -= FIXED_DT;
+    }
+    render();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+/* ═══════════════ TUTORIAL SEQUENCE ═══════════════ */
+/*
+  Живая шкала натяжения. Показывает текущий уровень в реальном времени.
+  Двигается туда-сюда: натянул на 100% — сердечки, вернул на 30% — обратно MORE.
+  Бонус фиксируется в момент отпускания (onUp), до сброса dragging.
+
+  Уровни:
+    0-19%  ⏬ DRAG ⏬
+   20-39%  ⏬ MORE ⏬
+   40-79%  ✅ ✅       (+50 ⚡ при выстреле)
+   80-100% 💚 💚       (+99 ⚡ при выстреле)
+*/
+var _tut = { state: 'off', el: null, txt: null, pendingBonus: 0, dragShown: false, conditionTimer: 0, blinkTimer: 0 };
+
+function _tutEl() {
+  if (!_tut.el) {
+    _tut.el = document.getElementById('tut-prompt');
+    _tut.txt = _tut.el.querySelector('.tp-text');
+  }
+  return _tut.el;
+}
+
+function _tutShow(html, green) {
+  var el = _tutEl();
+  _tut.txt.innerHTML = html;
+  el.classList.toggle('green', !!green);
+  el.classList.add('visible');
+}
+
+function _tutHide() {
+  _tutEl().classList.remove('visible');
+}
+
+function _tutPos() {
+  var el = _tutEl();
+  if (!state || !state.lighthouse) return;
+  var lh = state.lighthouse;
+  var sx = lh.x * scale;
+  var sy = lh.y * scale;
+  var above = 0.7 * scale * 6 + 40;
+  el.style.left = sx + 'px';
+  el.style.top = (sy - above) + 'px';
+}
+
+function _tutDragPct() {
+  if (!state.dragCurrent) return 0;
+  var lh = state.lighthouse;
+  var dc = state.dragCurrent;
+  var dx = lh.x - dc.x, dy = lh.y - dc.y;
+  return Math.min(Math.sqrt(dx * dx + dy * dy) / CFG.DRAG_MAX, 1);
+}
+
+function tutReset() {
+  _tut.state = 'off';
+  _tut.pendingBonus = 0;
+  _tut.dragShown = false;
+  _tut.conditionTimer = 0;
+  _tut.blinkTimer = 0;
+  _tutHide();
+}
+
+function tutStart() {
+  _tut.state = 'hold';
+  _tut.pendingBonus = 0;
+  _tut.dragShown = false;
+  _tut.conditionTimer = 0;
+  _tut.blinkTimer = 0;
+  _tutPos();
+  _tutShow('HOLD');
+}
+
+function tutFinish() {
+  _tut.state = 'finished';
+  _tutHide();
+}
+
+/* onDown — юзер схватил маяк → сразу DRAG (без задержки) */
+function tutOnHold() {
+  if (_tut.state !== 'hold') return;
+  _tut.state = 'active';
+  if (!_tut.dragShown) {
+    _tut.dragShown = true;
+    state.energy += 1; /* бонус за первое перетаскивание */
+  }
+  _tutShow('<span class="emoji-pink">⏬</span> DRAG <span class="emoji-pink">⏬</span>');
+}
+
+/* Каждый кадр: живая шкала */
+function tutUpdate(dt) {
+  if (_tut.state === 'off' || _tut.state === 'finished' || _tut.state === 'fired') return;
+  _tutPos();
+
+  if (_tut.state === 'hold') return; /* ждём захвата */
+
+  if (_tut.state === 'active') {
+    if (!state.dragging) {
+      _tut.state = 'hold';
+      _tut.conditionTimer = 0;
+      _tutShow('HOLD');
+      return;
+    }
+    var pct = _tutDragPct();
+    var conditionsMet = (pct >= 0.4);
+
+    if (conditionsMet) {
+      _tut.conditionTimer += dt;
+      if (_tut.conditionTimer >= 3) {
+        _tut.state = 'blink';
+        _tut.blinkTimer = 0;
+        return;
+      }
+    } else {
+      _tut.conditionTimer = 0;
+    }
+
+    if (pct >= 0.8) {
+      _tutShow('<span class="emoji-green">💚</span> <span class="emoji-green">💚</span>', true);
+    } else if (pct >= 0.4) {
+      _tutShow('✅ ✅');
+    } else if (pct >= 0.2) {
+      _tutShow('<span class="emoji-pink">⏬</span> MORE <span class="emoji-pink">⏬</span>');
+    } else {
+      _tutShow('<span class="emoji-pink">⏬</span> DRAG <span class="emoji-pink">⏬</span>');
+    }
+    return;
+  }
+
+  if (_tut.state === 'blink') {
+    if (!state.dragging) {
+      _tut.state = 'hold';
+      _tut.conditionTimer = 0;
+      _tut.blinkTimer = 0;
+      _tutShow('HOLD');
+      return;
+    }
+    var pct2 = _tutDragPct();
+    if (pct2 < 0.4) {
+      _tut.state = 'active';
+      _tut.conditionTimer = 0;
+      _tut.blinkTimer = 0;
+      return;
+    }
+    _tut.blinkTimer += dt;
+    var phase = Math.floor(_tut.blinkTimer * 2.5) % 2;
+    _tutShow(phase === 0 ? 'JUST' : 'RELEASE');
+    return;
+  }
+}
+
+/*
+  Вызывается из onUp ДО state.dragging=false,
+  чтобы зафиксировать бонус по текущему натяжению.
+  Если условия выполнены — скрываем плашку и переходим в 'fired'.
+*/
+function tutOnRelease() {
+  if (_tut.state !== 'active' && _tut.state !== 'blink') return;
+  var pct = _tutDragPct();
+  if (pct >= 0.8) {
+    _tut.pendingBonus = 99;
+  } else if (pct >= 0.4) {
+    _tut.pendingBonus = 50;
+  } else {
+    _tut.pendingBonus = 0;
+  }
+  /* Если условия выполнены (✅✅ или 💚💚) ИЛИ отпустили во время JUST|RELEASE — скрываем */
+  if (_tut.pendingBonus > 0 || _tut.state === 'blink') {
+    _tut.state = 'fired';
+    _tutHide();
+  }
+}
+
+/* Вызывается при попадании (firstColony). Возвращает бонус. */
+function tutOnFire() {
+  if (_tut.state === 'off' || _tut.state === 'finished') return 0;
+  var bonus = _tut.pendingBonus;
+  _tut.pendingBonus = 0;
+  if (bonus > 0) {
+    state.energy += bonus;
+  }
+  return bonus;
+}
+
+/* ═══════════════ COLONIZE BUTTON ═══════════════ */
+document.getElementById('colonize-btn').addEventListener('click', function() {
+  state.colonized = true;
+  state.waveTimer = CFG.WAVE_REST;
+  state.energy += 1; /* стартовая энергия */
+  /* Скрываем оверлей колонизации */
+  document.getElementById('colonize-overlay').classList.add('hidden');
+  /* Запускаем туториал */
+  tutStart();
+  /* Показываем HUD — но только базовый, магазин появится после первой колонии */
+  document.getElementById('hud').style.opacity = '1';
+  document.getElementById('ammo-bar').style.opacity = '1';
+  document.getElementById('shop-btn').style.opacity = '0';
+});
+
+/* ═══════════════ INIT ═══════════════ */
+function init() {
+  canvas = document.getElementById('game');
+  state = freshState();
+  resizeCanvas();
+  initWorld();
+  initInput();
+  buildAmmoBar();
+  updateHUD();
+  /* Автоколонизация при старте (кнопка COLONIZE временно скрыта) */
+  state.colonized = true;
+  state.waveTimer = CFG.WAVE_REST;
+  state.energy += 1;
+  tutStart();
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.classList.add('dark');
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(event) {
+    if (event.matches) { document.documentElement.classList.add('dark'); }
+    else { document.documentElement.classList.remove('dark'); }
+  });
+  window.addEventListener('resize', resizeCanvas);
+  requestAnimationFrame(function(t) { lastTime = t; requestAnimationFrame(gameLoop); });
+}
+
+init();
+})();
+</script>
+
+
+
+
+
+
+</body></html>
