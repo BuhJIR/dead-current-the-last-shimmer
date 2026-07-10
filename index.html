@@ -590,8 +590,7 @@ function initCloudMap(width, height) {
  * рендере как (а) лёгкое горизонтальное коробление краёв и (б) «дыхание»
  * плотности. Считается раз в кадр на грубой сетке → почти бесплатно.
  */
-var MUT_AMP = 0.15;   /* амплитуда «дыхания» плотности */
-var MUT_WARP = 7;     /* горизонтальное коробление краёв, px */
+var MUT_WARP = 9;     /* амплитуда искажения координат выборки (клубление), px */
 var AIR_CELL = 26;    /* px на ячейку воздушной сетки (экранные) */
 var airMap = null, airW = 0, airH = 0;
 
@@ -779,7 +778,7 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     var scanLen = br * CFG.SCANNER_RANGE_MULT * 3.4 * reach;
     scanLenSq = scanLen * scanLen;
     cosThreshold = Math.cos(0.25);
-    var beamRot = state.time * 1.5;
+    var beamRot = state.time * 0.6; /* медленнее вращение красных лучей */
     dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot);
     dirX2 = -dirX1; dirY2 = -dirY1;
   }
@@ -798,32 +797,46 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     var beamPen = 1 - altGap * (1.1 - 0.6 * lhAbove);
     if (beamPen < 0.12) beamPen = 0.12; else if (beamPen > 1) beamPen = 1;
 
+    /* Видимый диапазон АБСОЛЮТНЫХ строк слоя — кламп интерполяции держим внутри него,
+       чтобы билинейка не читала через шов кольцевого буфера (иначе — едущая
+       горизонтальная полоса резкой яркости на каждом слое). */
+    var visMin, visMax;
+    if (layer.scrollDir === 'up') { visMax = layer.bottomRow; visMin = layer.bottomRow - th + 1; }
+    else { visMin = layer.topRow; visMax = layer.topRow + th - 1; }
+
     for (var oy = 0; oy < oh; oy++) {
       var sy = oy * ds;                       /* логический Y */
-      var rowF = screenYToLayerRow(layer, sy);
-      var tyI = Math.floor(rowF);
-      var fy = rowF - tyI; fy = fy * fy * (3 - 2 * fy);
-      /* rowF — АБСОЛЮТНАЯ строка слоя, монотонно растёт с sy для обоих направлений,
-         поэтому соседняя строка для билинейной интерполяции всегда tyI+1 */
-      var bufRow0 = ((tyI % th) + th) % th;
-      var bufRow1 = (((tyI + 1) % th) + th) % th;
-      var base0 = bufRow0 * tw, base1 = bufRow1 * tw;
+      var rowBase = screenYToLayerRow(layer, sy);
       var rowOff = oy * ow * 4;
       var dyBeam = sy - lhSy;
 
       for (var ox = 0; ox < ow; ox += xstep) {
         var sx = ox * ds;                     /* логический X */
 
-        /* Воздух: медленно мутирующее поле → клубление / слияние / растворение */
-        var air = sampleAir(sx + airPhase, sy);
-        var warp = (air - 0.5) * MUT_WARP;    /* коробление краёв облаков */
+        /* Воздух искажает КООРДИНАТЫ выборки (клубление/снос), а НЕ добавляет яркость:
+           варп сохраняет яркость, поэтому не порождает горизонтальных полос. */
+        var airX = sampleAir(sx + airPhase, sy);
+        var airY = sampleAir(sx * 0.9 + 1000 - airPhase, sy * 0.9);
+        var warpX = (airX - 0.5) * MUT_WARP;
+        var warpY = (airY - 0.5) * MUT_WARP;
 
-        var txF = (sx + warp) / TERRAIN_RES;
+        /* горизонталь */
+        var txF = (sx + warpX) / TERRAIN_RES;
         var txI = Math.floor(txF);
         var fx = txF - txI; fx = fx * fx * (3 - 2 * fx);
         var tx2 = txI + 1;
         if (txI >= tw) txI = tw - 1; else if (txI < 0) txI = 0;
         if (tx2 >= tw) tx2 = tw - 1; else if (tx2 < 0) tx2 = 0;
+
+        /* вертикаль: варп + кламп в пределах буфера (без шва кольца) */
+        var rowF = rowBase + warpY / TERRAIN_RES;
+        var tyI = Math.floor(rowF);
+        var fy = rowF - tyI;
+        if (tyI >= visMax) { tyI = visMax - 1; fy = 1; }
+        else if (tyI < visMin) { tyI = visMin; fy = 0; }
+        fy = fy * fy * (3 - 2 * fy);
+        var base0 = (((tyI % th) + th) % th) * tw;
+        var base1 = ((((tyI + 1) % th) + th) % th) * tw;
 
         /* base + mod (дыры от взрывов/маяка) */
         var i00 = base0 + txI, i10 = base0 + tx2, i01 = base1 + txI, i11 = base1 + tx2;
@@ -832,9 +845,6 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
         var h01 = layer.base[i01] + layer.mod[i01];
         var h11 = layer.base[i11] + layer.mod[i11];
         var hVal = h00*(1-fx)*(1-fy) + h10*fx*(1-fy) + h01*(1-fx)*fy + h11*fx*fy;
-
-        /* «дыхание» плотности — облака то сгущаются, то тают */
-        hVal += (air - 0.5) * MUT_AMP;
 
         /* ── Красный луч маяка: прозрачность в центре + красная кромка ── */
         var redRim = 0;
@@ -3219,7 +3229,7 @@ function drawLighthouse() {
   if (state.colonized) {
     var isNightLh = cloudDarkMult < 0.9;
     var reachLh = isNightLh ? 1.5 : 1.15;
-    var beamRot = state.time * 1.5;
+    var beamRot = state.time * 0.6; /* медленнее вращение красных лучей */
     var scanAngle = 0.25;
     var scanLen = r * CFG.SCANNER_RANGE_MULT * 3.4 * reachLh;
     var t = state.basePulse;
