@@ -310,6 +310,8 @@ var CFG = {
   BASE_OFFSET: 12,
   LIGHTHOUSE_OFFSET: 8,
   SCANNER_RANGE_MULT: 8,
+  SLOT_LEN: 50,     /* длина слота день/ночь (сек): волна + отдых укладываются в него */
+  INTRO_REST: 8,    /* пауза перед самой первой волной */
 };
 
 /* ═══════════════ COLONY TIERS ═══════════════ */
@@ -515,16 +517,17 @@ var DETAIL_FREQ = 0.16;   /* частота зерна (больше → мел�
 var DITHER_AMP = 0.07;    /* упорядоченный дизеринг краёв (пиксельность) */
 var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5]; /* 4×4 Bayer /16 */
 
+/* drift/curl/tspd = движение облаков (уже ×0.75 от прежних — на 25% медленнее) */
 var cloudLayers = [
   { name:'deck', den:null, tmp:null, enabled:true, cheap:false,
-    driftX: 4,  driftY: 10, curl: 62, pf:0.085, tspd:0.22, sf:0.0090, relax:0.028,
-    alpha:0.62, altitude:0.15 },
+    driftX: 3,    driftY: 7.5,  curl: 46, pf:0.085, tspd:0.165, sf:0.0090, relax:0.028,
+    alpha:0.74, altitude:0.15 },
   { name:'high', den:null, tmp:null, enabled:true, cheap:false,
-    driftX:-6,  driftY:-7,  curl: 50, pf:0.095, tspd:0.20, sf:0.0100, relax:0.026,
-    alpha:0.66, altitude:0.85 },
+    driftX:-4.5,  driftY:-5.25, curl: 37, pf:0.095, tspd:0.150, sf:0.0100, relax:0.026,
+    alpha:0.80, altitude:0.85 },
   { name:'veil', den:null, tmp:null, enabled:true, cheap:true,
-    driftX: 8,  driftY: 16, curl: 40, pf:0.120, tspd:0.30, sf:0.0130, relax:0.032,
-    alpha:0.30, altitude:0.55 }
+    driftX: 6,    driftY: 12,   curl: 30, pf:0.120, tspd:0.225, sf:0.0130, relax:0.032,
+    alpha:0.34, altitude:0.55 }
 ];
 var craters = []; /* {layerIdx, gx, gy, r, maxR, growth, strength} — выеденные дыры */
 
@@ -571,7 +574,7 @@ function supplyAt(layer, i, j) {
   var syp = j * CLOUD_CELL - layer.driftY * _simTime;
   var f = layer.sf;
   var n = _fbm3(sxp * f + layer.seed0, syp * f, _simTime * 0.05 + layer.seed0);
-  n = (n - 0.5) * 1.55 + 0.42;   /* контраст → рвём сплошную пелену на клубы и просветы */
+  n = (n - 0.5) * 1.55 + cloudSupplyBias; /* смещение = густота (плавно растёт к ночи) */
   return n < 0 ? 0 : n;          /* плотность неотрицательна (для корректного выедания дыр) */
 }
 
@@ -675,7 +678,8 @@ function repelCloudsFromLighthouse() {
 }
 
 /* ── Палитра плотности → RGB (упаковано в int) ── */
-var cloudDarkMult = 1.0; /* 1.0 = день, 0.5 = ночь */
+var cloudDarkMult = 1.0;      /* 1.0 = день, ~0.45 = ночь (плавно) */
+var cloudSupplyBias = 0.50;   /* густота облаков (плавно растёт к ночи) */
 function heightToColor(h) {
   var contrast = (h - 0.5) * 2.5 + 0.5;
   if (contrast < 0) contrast = 0; else if (contrast > 1) contrast = 1;
@@ -727,13 +731,13 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     var bc = toScreen(lh.x, lh.y);
     lhSx = bc[0]; lhSy = bc[1];
     var br = 0.7 * lhScale;
-    var isNight = cloudDarkMult < 0.9;
-    var reach = isNight ? 1.5 : 1.15;
-    nightBright = isNight ? 1.5 : 1.0;
-    var scanLen = br * CFG.SCANNER_RANGE_MULT * 3.4 * reach;
+    var nf = (state && state.nightFactor) || 0;   /* 0=день … 1=ночь, плавно */
+    var reach = 1.25 + nf * 0.55;                 /* ночью светят дальше (плавно) */
+    nightBright = 1.0 + nf * 0.7;                 /* ночью ярче (плавно) */
+    var scanLen = br * CFG.SCANNER_RANGE_MULT * 5.4 * reach; /* дальность значительно больше */
     scanLenSq = scanLen * scanLen;
     cosThreshold = Math.cos(0.25);
-    var beamRot = state.time * 0.6;
+    var beamRot = state.time * 0.45;              /* вращение на 25% медленнее */
     dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot);
     dirX2 = -dirX1; dirY2 = -dirY1;
   }
@@ -750,8 +754,8 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     /* Насколько луч просвечивает ЭТОТ слой: нижний — полностью, дальние — меньше,
        и тем сильнее пробивает, чем выше поднят маяк (lhAbove). */
     var altGap = layer.altitude - cloudLayers[0].altitude; if (altGap < 0) altGap = 0;
-    var beamPen = 1 - altGap * (1.1 - 0.6 * lhAbove);
-    if (beamPen < 0.12) beamPen = 0.12; else if (beamPen > 1) beamPen = 1;
+    var beamPen = 1 - altGap * (0.7 - 0.45 * lhAbove);  /* дальний слой просвечивает сильнее, чем раньше */
+    if (beamPen < 0.4) beamPen = 0.4; else if (beamPen > 1) beamPen = 1;
 
     for (var oy = 0; oy < oh; oy++) {
       var sy = oy * ds;
@@ -798,7 +802,7 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
             if (inBeam > 0) {
               if (inBeam > 1) inBeam = 1;
               var clear = inBeam * beamPen;
-              hVal -= clear * 0.55;   /* чуть меньше «съедаем» — остаётся облако под покраску */
+              hVal -= clear * 0.72;   /* сильнее просвечивание обоих слоёв */
               /* эффектный прожектор: яркая кромка + мягкая красная заливка вдоль всего луча */
               redRim = (clear * (1 - clear) * 5.0 + clear * 0.4) * nightBright * beamPen;
             }
@@ -850,6 +854,8 @@ function freshState() {
     wave: 0,
     waveActive: false,
     waveTimer: 2,
+    clock: 0,          /* игровые часы (сек) — крутят цикл день/ночь */
+    nightFactor: 0,    /* 0=день … 1=ночь (плавно) */
     enemies: [],
     projectiles: [],
     particles: [],
@@ -1867,12 +1873,11 @@ function startWave() {
   if (isNight) {
     showWaveText('NIGHT ' + (dayWave));
     state.nightHpMult = 2; /* враги в 2 раза сильнее */
-    cloudDarkMult = 0.5;   /* облака темнеют вдвое */
   } else {
     showWaveText('DAY ' + dayWave);
     state.nightHpMult = 1;
-    cloudDarkMult = 1.0;
   }
+  /* cloudDarkMult теперь ведёт непрерывный цикл дня/ночи (см. update) */
 
   /* refresh shield charges */
   var sg = perkLvl('shield_gen');
@@ -1991,6 +1996,15 @@ function update(dt) {
   state.lighthousePulse += dt * 3;
   if (state.shakeTimer > 0) state.shakeTimer -= dt;
 
+  /* ── Непрерывный цикл день↔ночь (не зависит от побед в волнах) ── */
+  if (state.firstColony) state.clock += dt;
+  var theta = (state.clock - CFG.INTRO_REST) * PI / CFG.SLOT_LEN;
+  var nf = state.clock <= CFG.INTRO_REST ? 0 : 0.5 - 0.5 * Math.cos(theta);
+  if (nf < 0) nf = 0; else if (nf > 1) nf = 1;
+  state.nightFactor = nf;
+  cloudDarkMult = 1 - nf * 0.55;      /* тьма/свет плавно */
+  cloudSupplyBias = 0.50 + nf * 0.16; /* густота облаков плавно растёт к ночи */
+
   /* Шаг 2D-симуляции пара (адвекция плотности через curl-поле скоростей) */
   scrollClouds(dt);
   /* Маяк разгоняет облака */
@@ -2016,12 +2030,12 @@ function update(dt) {
     state.charge = Math.min(state.charge + dt * chgSpd, maxCharge);
   }
 
-  /* Wave management — только после первой колонии */
+  /* Wave management — волны привязаны к слотам цикла; отдых = остаток слота.
+     Волна N стартует, когда часы дойдут до её слота (INTRO + N*SLOT_LEN).
+     Быстро зачистил — дольше отдыхаешь; затянул за слот — отдыха нет. */
+  var nextWaveDue = CFG.INTRO_REST + state.wave * CFG.SLOT_LEN;
   if (!state.waveActive) {
-    if (state.firstColony) {
-      state.waveTimer -= dt;
-      if (state.waveTimer <= 0) startWave();
-    }
+    if (state.firstColony && state.clock >= nextWaveDue) startWave();
   } else {
     /* Проверяем завершение волны: секвенсор остановлен И все враги мертвы */
     var allDead = true;
@@ -2030,10 +2044,7 @@ function update(dt) {
     }
     if (!state.sequencer.active && allDead) {
       state.waveActive = false;
-      /* День→Ночь: 10с, Ночь→День: полный отдых 60с */
       var wasNight = (state.wave % 2 === 0);
-      state.waveTimer = wasNight ? CFG.WAVE_REST : 10;
-      /* Награда за завершение волны */
       var reward = wasNight ? 35 : 15;
       state.energy += reward;
       showWaveText('WAVE COMPLETE ⚡+' + reward);
@@ -3141,15 +3152,16 @@ function drawLighthouse() {
 
   /* Луч маяка теперь рисуется внутри renderCloudsToCtx (попиксельно окрашивает облака) */
 
-  /* Красная заливка лучей — сами лучи прозрачны, ночью дальше и ярче */
+  /* Красная заливка лучей — сами лучи прозрачны, ночью дальше и ярче (плавно) */
   if (state.colonized) {
-    var isNightLh = cloudDarkMult < 0.9;
-    var reachLh = isNightLh ? 1.5 : 1.15;
-    var beamRot = state.time * 0.6; /* медленнее вращение красных лучей */
+    var nfLh = state.nightFactor || 0;
+    var isNightLh = nfLh > 0.5;
+    var reachLh = 1.25 + nfLh * 0.55;
+    var beamRot = state.time * 0.45; /* вращение на 25% медленнее */
     var scanAngle = 0.25;
-    var scanLen = r * CFG.SCANNER_RANGE_MULT * 3.4 * reachLh;
+    var scanLen = r * CFG.SCANNER_RANGE_MULT * 5.4 * reachLh; /* дальность значительно больше */
     var t = state.basePulse;
-    var beamAlpha = (isNightLh ? 0.12 : 0.075) + Math.sin(t) * 0.025;
+    var beamAlpha = (0.075 + nfLh * 0.055) + Math.sin(t) * 0.025;
 
     for (var bi = 0; bi < 2; bi++) {
       var bAngle = beamRot + bi * PI;
@@ -3869,8 +3881,8 @@ function hexToRgba(hex, a) {
 /* ═══════════════ HUD ═══════════════ */
 function updateHUD() {
   document.getElementById('hud-lives').textContent = '❤ ' + state.lives;
-  var isNight = (state.wave % 2 === 0);
-  var dayNum = isNight ? state.wave / 2 : Math.ceil(state.wave / 2);
+  var isNight = state.nightFactor > 0.5;   /* \u0438\u043A\u043E\u043D\u043A\u0430 \u043F\u043E \u043D\u0435\u043F\u0440\u0435\u0440\u044B\u0432\u043D\u043E\u043C\u0443 \u0446\u0438\u043A\u043B\u0443 */
+  var dayNum = Math.max(1, state.wave);
   document.getElementById('hud-wave').textContent = (isNight ? '\uD83C\uDF19 NIGHT ' : '\u2600 DAY ') + dayNum;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-energy').textContent = '⚡ ' + state.energy;
@@ -3882,7 +3894,7 @@ function updateHUD() {
   var inRest = state.colonized && state.firstColony && !state.waveActive && !state.gameOver;
   if (inRest) {
     raiseBtn.classList.add('visible');
-    var timeLeft = Math.ceil(state.waveTimer);
+    var timeLeft = Math.max(0, Math.ceil((CFG.INTRO_REST + state.wave * CFG.SLOT_LEN) - state.clock));
     var label = '\u2206 BEACON (' + timeLeft + 's) \u2206';
     raiseBtn.childNodes[0].textContent = label + '\n';
     var glitch = raiseBtn.querySelector('.btn__glitch');
@@ -3898,9 +3910,8 @@ function updateHUD() {
     ammoBar.classList.remove('combat-hide');
     shopBtn.classList.remove('combat-hide');
   }
-  /* Показываем магазин только: после первой колонии, в затишье перед днём (после ночи) */
-  var nextIsDay = (state.wave > 0 && state.wave % 2 === 0); /* wave чётная и >0 = последняя была ночь → следующая день */
-  if (state.firstColony && nextIsDay && !state.waveActive) {
+  /* Магазин доступен во время отдыха между волнами (после первой колонии) */
+  if (state.firstColony && !state.waveActive) {
     shopBtn.style.opacity = '1';
   } else {
     shopBtn.style.opacity = '0';
