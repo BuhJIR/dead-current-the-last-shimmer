@@ -310,8 +310,9 @@ var CFG = {
   BASE_OFFSET: 12,
   LIGHTHOUSE_OFFSET: 8,
   SCANNER_RANGE_MULT: 8,
-  SLOT_LEN: 50,     /* длина слота день/ночь (сек): волна + отдых укладываются в него */
+  SLOT_LEN: 85,     /* длина слота день/ночь (сек): сутки = 2 слота (+70% к прежним) */
   INTRO_REST: 8,    /* пауза перед самой первой волной */
+  REST_FF: 12,      /* множитель ускорения при перемотке отдыха */
 };
 
 /* ═══════════════ COLONY TIERS ═══════════════ */
@@ -856,6 +857,9 @@ function freshState() {
     waveTimer: 2,
     clock: 0,          /* игровые часы (сек) — крутят цикл день/ночь */
     nightFactor: 0,    /* 0=день … 1=ночь (плавно) */
+    resting: false,    /* идёт перемотка отдыха до следующей волны */
+    restBonus: 0,      /* бонус к урону/зарядке на текущую волну (доля, 0..~0.5) */
+    restStartClock: 0, /* когда началось затишье (для расчёта % отдыха от суток) */
     enemies: [],
     projectiles: [],
     particles: [],
@@ -1338,7 +1342,7 @@ function onContact(contact) {
 
   var vel = projBody.getLinearVelocity();
   var impactSpeed = vel.length();
-  var dmgMult = tier().dmgMult;
+  var dmgMult = tier().dmgMult * (1 + state.restBonus); /* бонус отдыха повышает урон на всю волну */
   var damage = (impactSpeed * CFG.DMG_VEL_FACTOR + proj.charge * CFG.DMG_CHARGE_FACTOR) * dmgMult;
 
   /* crit perk */
@@ -1870,11 +1874,20 @@ function startWave() {
   var cycleNum = Math.floor((dayWave - 1) / WAVE_SEQUENCES.length) + 1; /* Цикл: 1, 2, 3... */
   var cycleMult = 1 + (cycleNum - 1) * 0.4;
 
+  /* Бонус отдыха: сколько % СУТОК прошло в затишье с прошлой волны */
+  var cycleLen = 2 * CFG.SLOT_LEN;
+  var rested = (state.clock - state.restStartClock) / cycleLen;
+  if (rested < 0) rested = 0; else if (rested > 0.9) rested = 0.9;
+  state.restBonus = rested;
+  state.resting = false;
+  var boostTxt = rested > 0.005 ? '  +' + Math.round(rested * 100) + '% ⚔' : '';
+
+  /* Попап смены дня/ночи + анонс волны */
   if (isNight) {
-    showWaveText('NIGHT ' + (dayWave));
+    showWaveText('🌙 НОЧЬ // ВОЛНА ' + dayWave + boostTxt);
     state.nightHpMult = 2; /* враги в 2 раза сильнее */
   } else {
-    showWaveText('DAY ' + dayWave);
+    showWaveText('☀ ДЕНЬ // ВОЛНА ' + dayWave + boostTxt);
     state.nightHpMult = 1;
   }
   /* cloudDarkMult теперь ведёт непрерывный цикл дня/ночи (см. update) */
@@ -1997,7 +2010,20 @@ function update(dt) {
   if (state.shakeTimer > 0) state.shakeTimer -= dt;
 
   /* ── Непрерывный цикл день↔ночь (не зависит от побед в волнах) ── */
+  var nextWaveDue = CFG.INTRO_REST + state.wave * CFG.SLOT_LEN;
   if (state.firstColony) state.clock += dt;
+  /* Отдых-перемотка: гоним часы/погоду/облака к времени волны ускоренно */
+  if (state.resting) {
+    if (state.waveActive || state.clock >= nextWaveDue) {
+      state.resting = false;
+    } else {
+      var ffStep = dt * (CFG.REST_FF - 1);
+      if (state.clock + ffStep >= nextWaveDue) { ffStep = nextWaveDue - state.clock; state.resting = false; }
+      state.clock += ffStep;
+      /* облака заметно ускоряются, но шагов ограниченно — без просадки FPS */
+      var ffst = 4; for (var ffi = 0; ffi < ffst; ffi++) scrollClouds(dt);
+    }
+  }
   var theta = (state.clock - CFG.INTRO_REST) * PI / CFG.SLOT_LEN;
   var nf = state.clock <= CFG.INTRO_REST ? 0 : 0.5 - 0.5 * Math.cos(theta);
   if (nf < 0) nf = 0; else if (nf > 1) nf = 1;
@@ -2027,13 +2053,13 @@ function update(dt) {
   var maxCharge = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
   if (state.dragging) {
     var chgSpd = CFG.CHARGE_SPEED * 0.5 * tier().chargeMult * (1 + perkLvl('fast_charge') * 0.3);
+    chgSpd *= (1 + state.restBonus); /* бонус отдыха ускоряет зарядку на всю волну */
     state.charge = Math.min(state.charge + dt * chgSpd, maxCharge);
   }
 
   /* Wave management — волны привязаны к слотам цикла; отдых = остаток слота.
      Волна N стартует, когда часы дойдут до её слота (INTRO + N*SLOT_LEN).
      Быстро зачистил — дольше отдыхаешь; затянул за слот — отдыха нет. */
-  var nextWaveDue = CFG.INTRO_REST + state.wave * CFG.SLOT_LEN;
   if (!state.waveActive) {
     if (state.firstColony && state.clock >= nextWaveDue) startWave();
   } else {
@@ -2044,6 +2070,7 @@ function update(dt) {
     }
     if (!state.sequencer.active && allDead) {
       state.waveActive = false;
+      state.restStartClock = state.clock; /* с этого момента копится «отдых» до след. волны */
       var wasNight = (state.wave % 2 === 0);
       var reward = wasNight ? 35 : 15;
       state.energy += reward;
@@ -2611,6 +2638,8 @@ function createShotCrater(worldX, worldY, charge) {
     /* Первый кратер — ПОД городом (на _surfCtx) */
     drawCraterOnCtx(_surfCtx, sx, sy, cr);
     state.firstColony = true;
+    state.clock = 0;             /* игровые часы стартуют с основания колонии */
+    state.restStartClock = 0;
     var tutBonus = tutOnFire();
     state.energy += 10; /* базовая награда за первый город */
     tutFinish();
@@ -3881,9 +3910,14 @@ function hexToRgba(hex, a) {
 /* ═══════════════ HUD ═══════════════ */
 function updateHUD() {
   document.getElementById('hud-lives').textContent = '❤ ' + state.lives;
-  var isNight = state.nightFactor > 0.5;   /* \u0438\u043A\u043E\u043D\u043A\u0430 \u043F\u043E \u043D\u0435\u043F\u0440\u0435\u0440\u044B\u0432\u043D\u043E\u043C\u0443 \u0446\u0438\u043A\u043B\u0443 */
-  var dayNum = Math.max(1, state.wave);
-  document.getElementById('hud-wave').textContent = (isNight ? '\uD83C\uDF19 NIGHT ' : '\u2600 DAY ') + dayNum;
+  /* \u0422\u0435\u043A\u0443\u0449\u0435\u0435 \u0438\u0433\u0440\u043E\u0432\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u0441\u0443\u0442\u043E\u043A \u0432\u043C\u0435\u0441\u0442\u043E \u044F\u0440\u043B\u044B\u043A\u0430 Day/Night */
+  var cycleLen = 2 * CFG.SLOT_LEN;
+  var ttod = ((((state.clock - CFG.INTRO_REST) % cycleLen) / cycleLen) + 1) % 1; /* 0 = \u043F\u043E\u043B\u0434\u0435\u043D\u044C */
+  var hour24 = (12 + ttod * 24) % 24;
+  var hh = Math.floor(hour24), mm = Math.floor((hour24 - hh) * 60);
+  var isNight = state.nightFactor > 0.5;
+  document.getElementById('hud-wave').textContent =
+    (isNight ? '\uD83C\uDF19 ' : '\u2600 ') + (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
   document.getElementById('hud-score').textContent = state.score;
   document.getElementById('hud-energy').textContent = '⚡ ' + state.energy;
 
@@ -3894,8 +3928,12 @@ function updateHUD() {
   var inRest = state.colonized && state.firstColony && !state.waveActive && !state.gameOver;
   if (inRest) {
     raiseBtn.classList.add('visible');
-    var timeLeft = Math.max(0, Math.ceil((CFG.INTRO_REST + state.wave * CFG.SLOT_LEN) - state.clock));
-    var label = '\u2206 BEACON (' + timeLeft + 's) \u2206';
+    /* \u041f\u043e\u0442\u0435\u043d\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0431\u043e\u043d\u0443\u0441 = \u0441\u043a\u043e\u043b\u044c\u043a\u043e % \u0441\u0443\u0442\u043e\u043a \u043e\u0441\u0442\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u0434\u044b\u0445\u0430\u0442\u044c \u0434\u043e \u0432\u043e\u043b\u043d\u044b */
+    var dueC = CFG.INTRO_REST + state.wave * CFG.SLOT_LEN;
+    var restPct = Math.max(0, Math.round((state.clock - state.restStartClock) / (2 * CFG.SLOT_LEN) * 100));
+    var label = state.resting
+      ? '\u23e9 REST\u2026 +' + restPct + '%'
+      : '\u23e9 REST +' + restPct + '% \u2694';
     raiseBtn.childNodes[0].textContent = label + '\n';
     var glitch = raiseBtn.querySelector('.btn__glitch');
     if (glitch) glitch.textContent = label;
@@ -4064,9 +4102,10 @@ document.getElementById('shop-overlay').addEventListener('click', function(e) {
 
 /* ═══════════════ RAISE LIGHTHOUSE ═══════════════ */
 document.getElementById('raise-btn').addEventListener('click', function() {
-  if (!state.waveActive && !state.gameOver) {
-    startWave();
-  }
+  if (state.waveActive || state.gameOver || !state.firstColony) return;
+  var dueC = CFG.INTRO_REST + state.wave * CFG.SLOT_LEN;
+  if (state.clock >= dueC) { startWave(); return; } /* время уже пришло — сразу волна */
+  state.resting = true; /* перемотка погоды/времени/облаков к волне (см. update) */
 });
 
 /* ═══════════════ GAME OVER ═══════════════ */
