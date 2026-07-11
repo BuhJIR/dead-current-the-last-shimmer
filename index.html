@@ -502,7 +502,8 @@ var deferredDestroy = [];  /* body references to destroy */
  *   • слабая релаксация к «подпитке» (движущийся с ветром fbm) не даёт полю
  *     опустеть и добавляет рождение/растворение клубов;
  *   • слои дрейфуют в РАЗНЫЕ стороны (аркадный параллакс);
- *   • взрывы/маяк выедают плотность — дыра затем сама затягивается течением.
+ *   • взрывы пробивают ВСЕ слои и оставляют стойкую дыру (поле hole): она дрейфует
+ *     с облаками и почти не заживает; маяк лишь слегка разгоняет плотность вокруг себя.
  *
  * Рендер идёт в уменьшенный оффскрин и растягивается билинейно (дёшево).
  */
@@ -512,22 +513,23 @@ var tw = 0;               /* флаг готовности (ненулевой =
 var cloudDownscale = 2;   /* уменьшение оффскрина рендера (nearest-upscale → пиксельность) */
 var _simTime = 0;
 var _psiGrid = null;      /* потенциал скорости (переиспользуемый буфер) */
+var HOLE_DECAY = 0.9994;  /* затухание пробитых дыр за шаг (≈0 → почти не заживают) */
 /* Детализация/зерно рендера — грубая симуляция + мелкий шум = чёткая гранулярность */
 var DETAIL_AMP = 0.30;    /* сила мелкой структуры внутри облаков */
 var DETAIL_FREQ = 0.16;   /* частота зерна (больше → мельче) */
 var DITHER_AMP = 0.07;    /* упорядоченный дизеринг краёв (пиксельность) */
 var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5]; /* 4×4 Bayer /16 */
 
-/* drift/curl/tspd = движение облаков (уже ×0.75 от прежних — на 25% медленнее) */
+/* drift/curl/tspd = движение облаков; curl = кучерявость (завихрения) */
 var cloudLayers = [
-  { name:'deck', den:null, tmp:null, enabled:true, cheap:false,
-    driftX: 3,    driftY: 7.5,  curl: 46, pf:0.085, tspd:0.165, sf:0.0090, relax:0.028,
+  { name:'deck', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:false,
+    driftX: 3,    driftY: 7.5,  curl: 68, pf:0.100, tspd:0.165, sf:0.0090, relax:0.028,
     alpha:0.74, altitude:0.15 },
-  { name:'high', den:null, tmp:null, enabled:true, cheap:false,
-    driftX:-4.5,  driftY:-5.25, curl: 37, pf:0.095, tspd:0.150, sf:0.0100, relax:0.026,
+  { name:'high', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:false,
+    driftX:-4.5,  driftY:-5.25, curl: 55, pf:0.110, tspd:0.150, sf:0.0100, relax:0.026,
     alpha:0.80, altitude:0.85 },
-  { name:'veil', den:null, tmp:null, enabled:true, cheap:true,
-    driftX: 6,    driftY: 12,   curl: 30, pf:0.120, tspd:0.225, sf:0.0130, relax:0.032,
+  { name:'veil', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:true,
+    driftX: 6,    driftY: 12,   curl: 45, pf:0.140, tspd:0.225, sf:0.0130, relax:0.032,
     alpha:0.34, altitude:0.55 }
 ];
 var craters = []; /* {layerIdx, gx, gy, r, maxR, growth, strength} — выеденные дыры */
@@ -592,6 +594,9 @@ function initCloudMap(width, height) {
     L.seed0 = (li + 1) * 137.13;
     L.den = new Float32Array(gw * gh);
     L.tmp = new Float32Array(gw * gh);
+    L.hole = new Float32Array(gw * gh);    /* поле пробитых дыр (вычитается из плотности) */
+    L.holeTmp = new Float32Array(gw * gh);
+    L.holeActive = false;
     /* стартовое заполнение — сразу облачно */
     for (var j = 0; j < gh; j++) {
       for (var i = 0; i < gw; i++) {
@@ -612,6 +617,7 @@ function scrollClouds(dt) {
     if (!L.enabled) continue;
     var den = L.den, tmp = L.tmp, psi = _psiGrid;
     var pf = L.pf, tsp = _simTime * L.tspd + L.seed0, curl = L.curl, relax = L.relax;
+    var advHole = L.holeActive, hole = L.hole, holeTmp = L.holeTmp, maxHole = 0;
 
     /* 1) Потенциал скорости ψ на сетке (анимированный) */
     for (var j = 0; j < gh; j++) {
@@ -621,7 +627,9 @@ function scrollClouds(dt) {
       }
     }
 
-    /* 2) Адвекция плотности по v = drift + curl(ψ), затем релаксация к подпитке */
+    /* 2) Адвекция плотности по v = drift + curl(ψ), затем релаксация к подпитке.
+       Поле дыр адвектируется тем же течением (дыры дрейфуют с облаками) и почти
+       не затухает → выстрелы не «заживают». */
     for (var jj = 0; jj < gh; jj++) {
       var jp1 = jj + 1; if (jp1 > gh - 1) jp1 = gh - 1;
       var jm1 = jj - 1; if (jm1 < 0) jm1 = 0;
@@ -638,17 +646,27 @@ function scrollClouds(dt) {
         var adv = sampleGrid(den, fx, fy);
         var sup = supplyAt(L, ii, jj);
         tmp[ro + ii] = adv + (sup - adv) * relax;
+        if (advHole) {
+          var hv = sampleGrid(hole, fx, fy) * HOLE_DECAY;
+          holeTmp[ro + ii] = hv;
+          if (hv > maxHole) maxHole = hv;
+        }
       }
     }
     /* swap */
     L.den = tmp; L.tmp = den;
+    if (advHole) { L.hole = holeTmp; L.holeTmp = hole; if (maxHole < 0.02) L.holeActive = false; }
   }
 }
 
 /* ── Плотность нижнего слоя в экранной точке — для смог-освещения ── */
 function getHeightAt(screenX, screenY) {
   if (tw === 0) return 0.4;
-  return sampleGrid(cloudLayers[0].den, screenX / CLOUD_CELL, screenY / CLOUD_CELL);
+  var L = cloudLayers[0];
+  var gx = screenX / CLOUD_CELL, gy = screenY / CLOUD_CELL;
+  var v = sampleGrid(L.den, gx, gy);
+  if (L.holeActive) v -= sampleGrid(L.hole, gx, gy);
+  return v < 0 ? 0 : v;
 }
 
 /* ── Маяк выедает плотность вокруг себя (в каждом слое) ── */
@@ -751,6 +769,7 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     var xstep = layer.cheap ? 2 : 1;
     var la255 = layer.alpha * 255;
     var den = layer.den;
+    var hasHole = layer.holeActive, hole = layer.hole;
 
     /* Насколько луч просвечивает ЭТОТ слой: нижний — полностью, дальние — меньше,
        и тем сильнее пробивает, чем выше поднят маяк (lhAbove). */
@@ -766,7 +785,9 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
 
       for (var ox = 0; ox < ow; ox += xstep) {
         var sx = ox * ds;
-        var hVal = sampleGrid(den, sx * invCell, gy);
+        var gxs = sx * invCell;
+        var hVal = sampleGrid(den, gxs, gy);
+        if (hasHole) hVal -= sampleGrid(hole, gxs, gy); /* пробитые дыры не заживают */
 
         /* Мелкая структура, ползущая ВМЕСТЕ с облаком (высокочастотно → зерно, не полосы),
            модулируется плотностью, чтобы не «шуметь» в чистом небе. */
@@ -1749,85 +1770,72 @@ function addLight(x, y, radius, color, life) {
   state.lights.push({ x:x, y:y, radius:radius, color:color, life:life, maxLife:life });
 }
 /*
- * Взрыв прожигает облака. Параметры:
- *   maxRadius — базовый радиус дыры (мировые юниты)
- *   power     — сила взрыва 0..1
- *   alt       — высота взрыва: 0 = у земли, 1 = высоко над облаками
+ * Взрыв прожигает облака НАСКВОЗЬ (все слои) и оставляет постоянную дыру.
+ *   maxRadius — базовый радиус (мировые юниты)
+ *   power     — сила 0..1
+ *   alt       — не используется (оставлено для совместимости вызовов)
  *
- * Ударная волна идёт ВНИЗ от высоты взрыва. Пробиваются только слои на высоте <= alt,
- * от ближнего к дальнему, слабея на каждом промежутке и «поглощаясь» пройденным слоем.
- *   • взрыв у земли (alt≈0.2) достаёт лишь нижний слой (deck);
- *   • мощный взрыв над облаками (alt→1) пробивает вниз слой за слоем, но меньше с каждым.
+ * Даже слабый выстрел пробивает оба слоя (сила с полом), сильный — очень широко и
+ * с кольцом ударной волны (эпично). Дыры пишутся в поле hole (не заживают, дрейфуют).
  */
-var CRATER_GAP_ATTEN = 0.7; /* потеря силы на вертикальном промежутке между высотами */
-var CRATER_TRANSMIT  = 0.6; /* сколько энергии проходит СКВОЗЬ слой к следующему ниже */
 function addCrater(wx, wy, maxRadius, power, alt) {
   if (tw === 0) return;
   power = (power === undefined) ? 1 : (power < 0 ? 0 : power > 1 ? 1 : power);
-  alt   = (alt === undefined) ? 0.2 : (alt < 0 ? 0 : alt > 1 ? 1 : alt);
   var sc = toScreen(wx, wy);
   var sx = sc[0], sy = sc[1];
+  var deckAlt = cloudLayers[0].altitude;
 
-  /* слои на высоте <= alt, от высокого к низкому (по пути ударной волны вниз) */
-  var order = [];
-  for (var i = 0; i < cloudLayers.length; i++) {
-    var L = cloudLayers[i];
-    if (L.enabled && L.altitude <= alt + 0.08) order.push(i);
+  for (var li = 0; li < cloudLayers.length; li++) {
+    var L = cloudLayers[li];
+    if (!L.enabled) continue;
+    /* пол силы 0.7 → даже слабый выстрел ПРОБИВАЕТ этот слой; дальние чуть слабее */
+    var s = (0.7 + power * 0.55) * (1 - (L.altitude - deckAlt) * 0.12);
+    spawnLayerCrater(li, sx, sy, maxRadius * (0.8 + power * 0.7), s);
   }
-  order.sort(function(a, b){ return cloudLayers[b].altitude - cloudLayers[a].altitude; });
 
-  var carry = power;
-  for (var oi = 0; oi < order.length; oi++) {
-    var li = order[oi];
-    var layer = cloudLayers[li];
-    var gap = alt - layer.altitude; if (gap < 0) gap = 0;
-    var reach = carry * (1 - gap * CRATER_GAP_ATTEN);
-    if (reach <= 0.06) break;               /* дальше вниз уже не пробивает */
-    spawnLayerCrater(li, sx, sy, maxRadius, reach);
-    carry = reach * CRATER_TRANSMIT;        /* слой поглотил часть — следующему ниже меньше */
+  /* Эпичный сильный выстрел: кольцо осколочных дыр (ударная волна) во всех слоях */
+  if (power > 0.45) {
+    var ring = 2 + Math.floor(power * 4);
+    var off = maxRadius * scale * (0.9 + power * 0.8);
+    var a0 = Math.random() * TAU;
+    for (var k = 0; k < ring; k++) {
+      var a = a0 + (k / ring) * TAU;
+      var rx = sx + Math.cos(a) * off, ry = sy + Math.sin(a) * off;
+      for (var li2 = 0; li2 < cloudLayers.length; li2++) {
+        if (!cloudLayers[li2].enabled) continue;
+        spawnLayerCrater(li2, rx, ry, maxRadius * (0.3 + power * 0.4), 0.55 + power * 0.4);
+      }
+    }
   }
 }
 
 function spawnLayerCrater(layerIdx, sx, sy, maxRadius, strength) {
-  /* Дыра выедается в поле плотности и держится ~life секунд, дрейфуя с ветром слоя,
-     затем плавно затягивается течением — след от выстрела виден заметно дольше. */
-  var rGrid = (maxRadius * scale) / CLOUD_CELL * (0.7 + strength * 0.5);
+  /* Кратер лишь «штампует» дыру в поле hole за короткий рост, затем удаляется —
+     сама дыра живёт в поле hole (дрейфует, почти не заживает). */
+  var rGrid = (maxRadius * scale) / CLOUD_CELL;
+  if (rGrid < 0.8) rGrid = 0.8;
   craters.push({
     layerIdx: layerIdx,
     gx: sx / CLOUD_CELL,
     gy: sy / CLOUD_CELL,
-    r: 0,
+    r: rGrid * 0.35,
     maxR: rGrid,
-    growth: rGrid * 4.5,               /* быстро раскрывается */
-    strength: 0.6 + strength * 0.4,
-    age: 0,
-    life: 1.8 + strength * 1.6         /* сколько держится дыра, сек */
+    growth: rGrid * 6.0,               /* быстрый «пробой» */
+    strength: strength > 1 ? 1 : strength
   });
 }
 
 function updateCraters(dt) {
   if (tw === 0) return;
-  var invCell = 1 / CLOUD_CELL;
   for (var ci = craters.length - 1; ci >= 0; ci--) {
     var c = craters[ci];
     var layer = cloudLayers[c.layerIdx];
     if (!layer || !layer.enabled) { craters.splice(ci, 1); continue; }
 
-    c.age += dt;
-    if (c.age >= c.life) { craters.splice(ci, 1); continue; }
     c.r = Math.min(c.r + c.growth * dt, c.maxR);
-    /* дыра дрейфует вместе с потоком слоя */
-    c.gx += layer.driftX * dt * invCell;
-    c.gy += layer.driftY * dt * invCell;
-    if (c.gx < -c.maxR || c.gx > gw + c.maxR || c.gy < -c.maxR || c.gy > gh + c.maxR) {
-      craters.splice(ci, 1); continue;
-    }
-
-    /* сила выедания спадает к концу жизни → плавное «зарастание» */
-    var fade = 1 - c.age / c.life;
-    var carve = c.strength * (0.25 + 0.75 * fade);
     var rad = c.r;
-    var den = layer.den;
+    var hole = layer.hole;
+    layer.holeActive = true;
     var rC = Math.ceil(rad) + 1;
     var cxI = Math.round(c.gx), cyI = Math.round(c.gy);
     for (var dj = -rC; dj <= rC; dj++) {
@@ -1836,12 +1844,14 @@ function updateCraters(dt) {
         var i = cxI + di; if (i < 0 || i >= gw) continue;
         var dx = i - c.gx, dy = j - c.gy, d = Math.sqrt(dx * dx + dy * dy);
         if (d < rad) {
-          var f = 1 - d / rad; f *= f;
+          var f = 1 - d / rad; f = f * (2 - f);      /* мягкий, но глубокий профиль */
+          var val = c.strength * f;
           var idx = j * gw + i;
-          den[idx] -= den[idx] * carve * f;
+          if (val > hole[idx]) hole[idx] = val;        /* дыра пробивает облако (макс) */
         }
       }
     }
+    if (c.r >= c.maxR) craters.splice(ci, 1);          /* штамп завершён — дыра остаётся в hole */
   }
 }
 function updateLights(dt) {
