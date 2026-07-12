@@ -800,6 +800,8 @@ function freshState() {
     selectedAmmo: 3,   /* на старте доступен только снаряд «Колония» (индекс 3) */
     energyTimer: 0,    /* накопитель для энергии с электростанций (раз в 10с) */
     ammoGrace: 0,      /* 5с на выбор снаряда, если волна началась с колонией */
+    tokCounter: 0,     /* счётчик построенных токамаков — задаёт их номера */
+    tokMenu: -1,       /* индекс города с открытым меню токамака, -1 = закрыто */
     colonyTier: 0,
     perks: freshPerks(),
     cities: [],        /* прокачиваемые города {x,y,r,up:{plant,pop,sci,cap},feed,flicker} */
@@ -874,7 +876,7 @@ function tokamakReady(city) {
 function tier() { return cityAgg(); } /* совместимость: tier().dmgMult / tier().chargeMult */
 
 function foundCity(sx, sy) {
-  state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0, tok:0, turret:0 }, turretCd:0, feed:0, flicker:0, born: state.time });
+  state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0, tok:0, turret:0 }, turretCd:0, feed:0, flicker:0, discharge:0, bonusAmmo:0, tokNum:0, born: state.time });
   state.lives += 1;
   /* декоративный рост города из кратера */
   var numRays = 3 + Math.floor(Math.random() * 4);
@@ -900,16 +902,21 @@ function buyCityUpgrade(city, key) {
   var cost = u.base + u.step * lvl;
   if (state.energy < cost) return;
   state.energy -= cost; city.up[key] = lvl + 1;
+  if (key === 'tok' && lvl === 0) city.tokNum = ++state.tokCounter; /* закрепляем номер токамака за городом */
   if (key === 'sci') grantSciPerk();
   if (key === 'sci' || key === 'tok') buildAmmoBar(); /* наука и токамак открывают боеприпасы */
   city.feed = 0.6; city.flicker = 0.5;
   updateHUD();
 }
 
-function triggerCityFeed() {
+/* Выстрел = разряд: ток резко обрывается, свет города мерцает, по проводу
+   проходит яркая вспышка (ушедшая в маяк дуга). */
+function dischargeCities() {
   for (var i = 0; i < state.cities.length; i++) {
-    state.cities[i].feed = 0.6;
-    if (state.cities[i].up.cap > 0) state.cities[i].flicker = 0.5;
+    var c = state.cities[i];
+    c.feed = 0;          /* ток обрывается */
+    c.flicker = 0.9;     /* свет мерцает частями */
+    c.discharge = 0.25;  /* таймер яркой вспышки-разряда по проводу */
   }
 }
 function updateVolley(dt) {
@@ -917,18 +924,21 @@ function updateVolley(dt) {
     var v = state.volley[i]; v.delay -= dt;
     if (v.delay <= 0) {
       fireProjectile(v.x, v.y, v.nx, v.ny, v.speed, v.charge, v.ammoIdx);
-      triggerCityFeed();
+      dischargeCities();
       state.volley.splice(i, 1);
     }
   }
 }
 function updateCities(dt) {
   var charging = state.dragging;
+  /* Интенсивность тока растёт вместе с зарядом — ток «копится» пока тянем */
+  var chg = charging ? Math.min(state.charge / CFG.MAX_CHARGE, 1) : 0;
   for (var i = 0; i < state.cities.length; i++) {
     var c = state.cities[i];
-    if (charging) c.feed = Math.max(c.feed, 0.35);
-    c.feed -= dt * 1.4; if (c.feed < 0) c.feed = 0;
+    if (charging) c.feed = Math.max(c.feed, 0.2 + 0.6 * chg);
+    c.feed -= dt * 1.8; if (c.feed < 0) c.feed = 0;
     c.flicker -= dt * 1.3; if (c.flicker < 0) c.flicker = 0;
+    if (c.discharge > 0) { c.discharge -= dt * 4; if (c.discharge < 0) c.discharge = 0; }
     if (c.turretCd > 0) c.turretCd -= dt;
   }
 }
@@ -979,9 +989,61 @@ function plantPositions(city) {
   return out;
 }
 
+/* Постоянные пилоны на коридоре город→маяк (детерминированы, не дрожат).
+   Смещены перпендикулярно, чтобы провод ломался зигзагом. */
+function pylonPositions(city) {
+  var lh = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var dx = lh[0] - city.x, dy = lh[1] - city.y;
+  var len = Math.sqrt(dx * dx + dy * dy) || 1;
+  var px = -dy / len, py = dx / len;
+  var seed = city.x * 0.13 + city.y * 0.07;
+  var out = [];
+  var ts = [0.3, 0.68];
+  for (var k = 0; k < ts.length; k++) {
+    var side = Math.sin(seed + k * 2.3) > 0 ? 1 : -1;
+    var off = side * (10 + 6 * k);
+    out.push({ x: city.x + dx * ts[k] + px * off, y: city.y + dy * ts[k] + py * off });
+  }
+  return out;
+}
+
+/* Ломаный путь провода: город → (пилоны+станции, по прогрессу к башне) → башня */
+function wirePath(city) {
+  var lh = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var dx = lh[0] - city.x, dy = lh[1] - city.y;
+  var len2 = dx * dx + dy * dy || 1;
+  var mids = plantPositions(city).concat(pylonPositions(city));
+  for (var i = 0; i < mids.length; i++) {
+    mids[i].t = ((mids[i].x - city.x) * dx + (mids[i].y - city.y) * dy) / len2;
+  }
+  mids.sort(function(a, b){ return a.t - b.t; });
+  var out = [{ x: city.x, y: city.y }];
+  for (var j = 0; j < mids.length; j++) out.push({ x: mids[j].x, y: mids[j].y });
+  out.push({ x: lh[0], y: lh[1] });
+  return out;
+}
+
 /* ── Хит-боксы иконок (экранные координаты) ── */
 function cityIconRect(c) { return { x: c.x - 13, y: c.y - c.r - 30, w: 26, h: 26 }; }
 function foundIconRect(s) { return { x: s.x - 15, y: s.y - 32, w: 30, h: 26 }; }
+/* Кольцо-реактор токамака: центр и радиус (заземлён к городу) */
+function tokRing(c) { var r = 12 + (c.up.tok || 0) * 3; return { x: c.x, y: c.y - c.r - r - 2, r: r }; }
+/* Кнопка токамака (открывает меню перепривязки бонусного снаряда) */
+function tokBtnRect(c) { var tr = tokRing(c); return { x: tr.x + tr.r + 3, y: tr.y - 9, w: 18, h: 18 }; }
+/* Кнопки меню токамака: выбор типа бонусного снаряда (стандарт + разблокированные) */
+function tokMenuButtons(c) {
+  var opts = [0];                       /* стандарт всегда */
+  if ((c.up.tok || 0) > 0) opts.push(1); /* Тесла — когда есть токамак */
+  var r = tokBtnRect(c), bw = 132, bh = 24, gap = 4;
+  var bx = r.x + r.w + 4, by = r.y;
+  if (bx + bw > W - 6) bx = r.x - 4 - bw;
+  if (bx < 6) bx = 6;
+  if (by < 44) by = 44;
+  if (by + opts.length * (bh + gap) > H - 8) by = H - 8 - opts.length * (bh + gap);
+  var out = [];
+  for (var i = 0; i < opts.length; i++) out.push({ x: bx, y: by + i * (bh + gap), w: bw, h: bh, ammo: opts[i] });
+  return out;
+}
 function cityPanelButtons(city) {
   var list = CITY_UPGRADES.concat([CITY_SPECIAL.turret, CITY_SPECIAL.tok]);
   var bw = 176, bh = 28, gap = 5, N = list.length;
@@ -1002,7 +1064,27 @@ function cityPanelButtons(city) {
 /* Тап по миру: иконки городов / кнопки панели / основание нового города.
    Возвращает true, если тап «съеден» (не начинать перетаскивание маяка). */
 function cityHitTest(sx, sy) {
-  if (!state.colonized || state.waveActive) { state.activeCity = -1; return false; } /* в бою прокачка недоступна */
+  if (!state.colonized || state.waveActive) { state.activeCity = -1; state.tokMenu = -1; return false; } /* в бою прокачка недоступна */
+  /* Меню токамака открыто — ловим выбор снаряда или закрываем по тапу мимо */
+  if (state.tokMenu >= 0 && state.cities[state.tokMenu] && state.cities[state.tokMenu].up.tok > 0) {
+    var mc = state.cities[state.tokMenu], mb = tokMenuButtons(mc);
+    for (var mi = 0; mi < mb.length; mi++) {
+      var mbt = mb[mi];
+      if (sx >= mbt.x && sx <= mbt.x + mbt.w && sy >= mbt.y && sy <= mbt.y + mbt.h) { mc.bonusAmmo = mbt.ammo; return true; }
+    }
+    state.tokMenu = -1; /* тап мимо — закрыть меню, продолжить обычный хит-тест */
+  }
+  /* Кнопки токамаков — открыть/закрыть меню перепривязки бонуса */
+  for (var tb = 0; tb < state.cities.length; tb++) {
+    var tc = state.cities[tb];
+    if (!(tc.up.tok > 0)) continue;
+    var trb = tokBtnRect(tc);
+    if (sx >= trb.x && sx <= trb.x + trb.w && sy >= trb.y && sy <= trb.y + trb.h) {
+      state.tokMenu = (state.tokMenu === tb) ? -1 : tb;
+      state.activeCity = -1;
+      return true;
+    }
+  }
   if (state.activeCity >= 0 && state.cities[state.activeCity]) {
     var btns = cityPanelButtons(state.cities[state.activeCity]);
     for (var i = 0; i < btns.length; i++) {
@@ -1017,7 +1099,7 @@ function cityHitTest(sx, sy) {
   }
   for (var c = 0; c < state.cities.length; c++) {
     var r = cityIconRect(state.cities[c]);
-    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; return true; }
+    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; state.tokMenu = -1; return true; }
   }
   for (var s = 0; s < state.foundSites.length; s++) {
     var fr = foundIconRect(state.foundSites[s]);
@@ -1417,14 +1499,21 @@ function fireProjectile(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) {
 function doFire(lhx,lhy,nx,ny,speed,charge,ammoIdx){
   /* Базовый выстрел сразу */
   fireProjectile(lhx,lhy-0.6,nx,ny,speed,charge,ammoIdx);
-  triggerCityFeed();
+  dischargeCities();
   /* Гигаконденсаторы/города дают бонусные выстрелы В ТОМ ЖЕ направлении, с задержкой.
-     Сила конденсаторов усиливает заряд бонусных снарядов. */
+     Сила конденсаторов усиливает заряд бонусных снарядов.
+     Токамаки (по номеру) задают ТИП k-го бонусного выстрела — комбо-очередь. */
   var agg = cityAgg();
   var extra = (AMMO[ammoIdx] && AMMO[ammoIdx].colony) ? 0 : agg.extraShots; /* колония — без бонусных */
   var capBoost = 1 + 0.12 * agg.cap;
+  var tokCities = [];
+  for (var ti = 0; ti < state.cities.length; ti++) if (state.cities[ti].up.tok > 0) tokCities.push(state.cities[ti]);
+  tokCities.sort(function(a,b){ return (a.tokNum||0) - (b.tokNum||0); });
   for(var k=0;k<extra;k++){
-    state.volley.push({ delay:0.4 + 0.28*k, x:lhx, y:lhy-0.6, nx:nx, ny:ny, speed:speed*(1-0.03*k), charge:charge*capBoost, ammoIdx:ammoIdx });
+    var bAmmo = ammoIdx;
+    var tc = tokCities[k];
+    if (tc) { var ba = tc.bonusAmmo || 0; if (AMMO[ba] && !AMMO[ba].colony && !AMMO[ba].locked) bAmmo = ba; }
+    state.volley.push({ delay:0.4 + 0.28*k, x:lhx, y:lhy-0.6, nx:nx, ny:ny, speed:speed*(1-0.03*k), charge:charge*capBoost, ammoIdx:bAmmo });
   }
 }
 
@@ -2092,6 +2181,7 @@ function startWave() {
   state.wave++;
   state.waveActive = true;
   state.activeCity = -1; /* закрыть панель прокачки города при старте волны */
+  state.tokMenu = -1;    /* и меню токамака */
   /* Если выбран снаряд «Колония» — даём 5с выбрать боевой из первых трёх */
   if (AMMO[state.selectedAmmo] && AMMO[state.selectedAmmo].colony) {
     state.ammoGrace = 5;
@@ -2726,13 +2816,7 @@ function render() {
     ctx.translate((Math.random()-0.5)*s, (Math.random()-0.5)*s);
   }
 
-  drawBackground();       /* город + освещение */
-
-  /* Кратеры разрушения — рисуются ПОВЕРХ города */
-  for (var dci = 0; dci < destructionCraters.length; dci++) {
-    var dc = destructionCraters[dci];
-    drawCraterOnCtx(ctx, dc.x, dc.y, dc.r);
-  }
+  drawBackground();       /* город + освещение (кратеры запечены в поверхность под городом) */
 
   drawBaseLine();
   drawSingularities();
@@ -2918,7 +3002,7 @@ function createShotCrater(worldX, worldY, charge) {
     /* Первый кратер — ПОД городом (на _surfCtx) */
     drawCraterOnCtx(_surfCtx, sx, sy, cr);
     state.firstColony = true;
-    state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0, tok:0, turret:0 }, turretCd:0, feed:0, flicker:0, born:0 });
+    state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0, tok:0, turret:0 }, turretCd:0, feed:0, flicker:0, discharge:0, bonusAmmo:0, tokNum:0, born:0 });
     state.clock = 0;             /* игровые часы стартуют с основания колонии */
     state.restStartClock = 0;
     var tutBonus = tutOnFire();
@@ -2932,8 +3016,9 @@ function createShotCrater(worldX, worldY, charge) {
       cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
     }
   } else {
-    /* Последующие кратеры — ПОВЕРХ города (разрушение) */
-    destructionCraters.push({ x: sx, y: sy, r: cr });
+    /* Последующие кратеры основывают новый город — запекаем ПОД город (как первый),
+       чтобы z-order и стиль совпадали с первым кратером. */
+    drawCraterOnCtx(_surfCtx, sx, sy, cr);
 
     /* Достаточно крупный кратер вдали от городов → место под НОВЫЙ город */
     if (charge >= 0.4 && cr >= 18) {
@@ -3244,20 +3329,28 @@ function updateCityGrowth(dt) {
 }
 
 /* Синий ток по проводу — зазубренная молния, как плазма снарядов */
-function drawWireBolt(ax, ay, bx, by, intensity) {
-  var dxr = bx - ax, dyr = by - ay, len = Math.sqrt(dxr * dxr + dyr * dyr) || 1;
-  var nx = -dyr / len, ny = dxr / len;
-  var segs = 5 + Math.floor(len / 34);
-  ctx.strokeStyle = '#3ad0ff';
+/* Зазубренная молния по ломаному пути (массив точек): каждый сегмент дрожит
+   отдельно, поэтому ток скачет зигзагом узел→узел. */
+function drawWireBolt(points, intensity) {
+  if (!points || points.length < 2) return;
+  var col = (intensity > 1) ? '#bfeaff' : '#3ad0ff';
+  ctx.strokeStyle = col;
   ctx.shadowColor = '#3ad0ff'; ctx.shadowBlur = 6;
   ctx.lineWidth = 1.3 + intensity * 1.6;
-  ctx.globalAlpha = 0.5 + intensity * 0.5;
-  ctx.beginPath(); ctx.moveTo(ax, ay);
-  for (var s = 1; s < segs; s++) {
-    var t = s / segs, j = (Math.random() - 0.5) * (5 + intensity * 8);
-    ctx.lineTo(ax + dxr * t + nx * j, ay + dyr * t + ny * j);
+  ctx.globalAlpha = Math.min(0.5 + intensity * 0.5, 1);
+  ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+  for (var i = 1; i < points.length; i++) {
+    var ax = points[i - 1].x, ay = points[i - 1].y, bx = points[i].x, by = points[i].y;
+    var dxr = bx - ax, dyr = by - ay, len = Math.sqrt(dxr * dxr + dyr * dyr) || 1;
+    var nx = -dyr / len, ny = dxr / len;
+    var segs = 2 + Math.floor(len / 22);
+    for (var s = 1; s < segs; s++) {
+      var t = s / segs, j = (Math.random() - 0.5) * (4 + intensity * 7);
+      ctx.lineTo(ax + dxr * t + nx * j, ay + dyr * t + ny * j);
+    }
+    ctx.lineTo(bx, by);
   }
-  ctx.lineTo(bx, by); ctx.stroke();
+  ctx.stroke();
   ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 }
 
@@ -3269,22 +3362,41 @@ function drawCityWorld() {
   for (var i = 0; i < state.cities.length; i++) {
     var c = state.cities[i];
     var plants = plantPositions(c);
-    var flow = Math.max(c.feed, state.dragging ? 0.4 : 0);
-    /* провода: город → башня и станции → башня/город */
+    var pyl = pylonPositions(c);
+    var path = wirePath(c);
+    var flow = Math.max(c.feed, state.dragging ? 0.3 : 0);
+    /* провод-основа: ломаная через пилоны/станции к башне */
     ctx.save();
-    ctx.strokeStyle = 'rgba(120,160,180,0.30)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(lh[0], lh[1]); ctx.stroke();
-    for (var k = 0; k < plants.length; k++) {
-      ctx.beginPath(); ctx.moveTo(plants[k].x, plants[k].y); ctx.lineTo(c.x, c.y);
-      ctx.moveTo(plants[k].x, plants[k].y); ctx.lineTo(lh[0], lh[1]); ctx.stroke();
-    }
+    ctx.strokeStyle = 'rgba(120,160,180,0.30)'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
+    for (var wp = 1; wp < path.length; wp++) ctx.lineTo(path[wp].x, path[wp].y);
+    ctx.stroke();
     ctx.restore();
-    /* ток по проводам во время зарядки/выстрела — синими молниями */
+    /* пилоны — заземлённые опоры вдоль провода (часть мира) */
+    for (var pk = 0; pk < pyl.length; pk++) {
+      var pp2 = pyl[pk];
+      ctx.save(); ctx.translate(pp2.x, pp2.y);
+      ctx.strokeStyle = '#4a6270'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 5); ctx.stroke();   /* столбик */
+      ctx.beginPath(); ctx.moveTo(-4, -5); ctx.lineTo(4, -5); ctx.stroke(); /* перекладина */
+      ctx.beginPath(); ctx.moveTo(-3, 5); ctx.lineTo(3, 5); ctx.stroke();   /* основание */
+      ctx.fillStyle = hexToRgba('#37e0ff', 0.4 + 0.6 * flow); ctx.fillRect(-1.3, -8.3, 2.6, 2.6); /* изолятор-огонёк */
+      ctx.restore();
+    }
+    /* ток по проводам во время зарядки — синими молниями зигзагом по сегментам */
     if (flow > 0.02) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      drawWireBolt(c.x, c.y, lh[0], lh[1], flow);
-      for (var k2 = 0; k2 < plants.length; k2++) drawWireBolt(plants[k2].x, plants[k2].y, lh[0], lh[1], flow * 0.85);
+      drawWireBolt(path, flow);
+      ctx.restore();
+    }
+    /* яркая вспышка-разряд в момент выстрела (ушедшая в маяк дуга) */
+    if (c.discharge > 0.02) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var di = 0.7 + c.discharge * 1.8;
+      drawWireBolt(path, di);
+      drawWireBolt(path, di);
       ctx.restore();
     }
     /* электростанции */
@@ -3297,10 +3409,17 @@ function drawCityWorld() {
       ctx.fillRect(-2.5, -2.5, 5, 5);
       ctx.restore();
     }
-    /* Токамак — вращающееся кольцо-реактор со спицами */
+    /* Токамак — заземлённый реактор: платформа-опора у города + вращающееся кольцо */
     if (c.up.tok > 0) {
-      var trad = 12 + c.up.tok * 3;
-      ctx.save(); ctx.translate(c.x, c.y - c.r - 4); ctx.rotate(state.time * 0.6);
+      var tr0 = tokRing(c), trad = tr0.r, tcx = tr0.x, tcy = tr0.y;
+      /* опора-платформа от города к кольцу — читается как постройка на земле */
+      ctx.save();
+      ctx.strokeStyle = '#4a3a6a'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(tcx - trad * 0.7, c.y); ctx.lineTo(tcx, tcy + trad * 0.5); ctx.lineTo(tcx + trad * 0.7, c.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tcx, tcy + trad); ctx.lineTo(tcx, tcy + trad * 0.5); ctx.stroke();
+      ctx.restore();
+      /* кольцо-реактор */
+      ctx.save(); ctx.translate(tcx, tcy); ctx.rotate(state.time * 0.6);
       ctx.strokeStyle = '#7a3bff'; ctx.lineWidth = 2.5; ctx.shadowColor = '#a06bff'; ctx.shadowBlur = 8;
       ctx.beginPath(); ctx.arc(0, 0, trad, 0, TAU); ctx.stroke();
       ctx.lineWidth = 1.5;
@@ -3308,6 +3427,12 @@ function drawCityWorld() {
       for (var sp = 0; sp < spokes; sp++) { var sa = (sp / spokes) * TAU; ctx.beginPath(); ctx.moveTo(Math.cos(sa) * trad * 0.45, Math.sin(sa) * trad * 0.45); ctx.lineTo(Math.cos(sa) * trad, Math.sin(sa) * trad); ctx.stroke(); }
       ctx.fillStyle = hexToRgba('#ff44cc', 0.6 + 0.4 * Math.sin(state.time * 5)); ctx.beginPath(); ctx.arc(0, 0, trad * 0.32, 0, TAU); ctx.fill();
       ctx.shadowBlur = 0; ctx.restore();
+      /* номер токамака */
+      if (c.tokNum > 0) {
+        ctx.save(); ctx.fillStyle = '#e6d2ff'; ctx.font = '700 9px "Chakra Petch"';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('№' + c.tokNum, tcx, tcy - trad - 6); ctx.restore();
+      }
     }
     /* Туррель — пушка, смотрит на цель */
     if (c.up.turret > 0) {
@@ -3333,7 +3458,7 @@ function drawCityWorld() {
 /* UI городов поверх облаков: иконки, места под новый город, панель прокачки */
 function drawCityUI() {
   if (!state.colonized) return;
-  if (state.waveActive) { state.activeCity = -1; return; } /* в бою прокачка скрыта */
+  if (state.waveActive) { state.activeCity = -1; state.tokMenu = -1; return; } /* в бою прокачка скрыта */
   ctx.save();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   /* места под новый город */
@@ -3384,6 +3509,33 @@ function drawCityUI() {
       ctx.globalAlpha = 1;
     }
     ctx.textAlign = 'center';
+  }
+  /* кнопки токамаков (⚛) — перепривязка бонусного снаряда */
+  for (var ti = 0; ti < state.cities.length; ti++) {
+    var tc = state.cities[ti];
+    if (!(tc.up.tok > 0)) continue;
+    var trb = tokBtnRect(tc), openM = state.tokMenu === ti;
+    ctx.fillStyle = openM ? 'rgba(60,20,90,0.95)' : 'rgba(30,12,50,0.9)';
+    ctx.strokeStyle = '#a06bff'; ctx.lineWidth = 2;
+    ctx.fillRect(trb.x, trb.y, trb.w, trb.h); ctx.strokeRect(trb.x, trb.y, trb.w, trb.h);
+    ctx.fillStyle = '#d8b6ff'; ctx.font = '12px sans-serif';
+    ctx.fillText('⚛', trb.x + trb.w / 2, trb.y + trb.h / 2 + 1);
+  }
+  /* меню токамака: выбор типа бонусного снаряда */
+  if (state.tokMenu >= 0 && state.cities[state.tokMenu] && state.cities[state.tokMenu].up.tok > 0) {
+    var mc = state.cities[state.tokMenu], mb = tokMenuButtons(mc);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    for (var mi = 0; mi < mb.length; mi++) {
+      var m = mb[mi], sel = (mc.bonusAmmo || 0) === m.ammo, am = AMMO[m.ammo];
+      ctx.fillStyle = 'rgba(5,12,20,0.96)';
+      ctx.strokeStyle = sel ? '#00e5ff' : '#555'; ctx.lineWidth = 2;
+      ctx.fillRect(m.x, m.y, m.w, m.h); ctx.strokeRect(m.x, m.y, m.w, m.h);
+      ctx.fillStyle = am.color; ctx.font = '13px sans-serif';
+      ctx.fillText(am.icon, m.x + 8, m.y + m.h / 2);
+      ctx.fillStyle = '#e8eaed'; ctx.font = '700 11px "Chakra Petch"';
+      ctx.fillText('БОНУС №' + (mc.tokNum || '?') + ': ' + am.name, m.x + 26, m.y + m.h / 2);
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   }
   ctx.restore();
 }
