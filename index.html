@@ -65,6 +65,7 @@ canvas { display:block; width:100%; height:100%; }
 .ammo-btn:not(.locked):hover { --stripe: #666; }
 .ammo-btn canvas { display:block; }
 #shop-btn {
+  display:none; /* прокачка теперь в мире — на иконках городов */
   --primary: #ffab00; --shadow-primary: #ff3d00; --color: #fff; --border: 3px; --stripe: #ff3d00;
   --clip: polygon(10% 0, 90% 0, 100% 30%, 95% 100%, 5% 100%, 0 30%);
   position:fixed; bottom:12px; right:12px; z-index:10;
@@ -503,67 +504,49 @@ var state;
 var deferredBodies = [];   /* { action:'create', args:{...} } */
 var deferredDestroy = [];  /* body references to destroy */
 
-/* ═══════════════ 2D VAPOR CLOUDS — advected density field (v3) ═══════════════ */
+/* ═══════════════ PARTICLE CLOUDS — metaball puffs (v4) ═══════════════ */
 /*
- * Облака ведут себя как пар по формуле, а не как «едущая текстура».
- *
- * Модель — облегчённая 2D-гидродинамика дыма:
- *   • у каждого слоя есть поле плотности den на грубой сетке;
- *   • скорость = дрейф (ветер слоя) + curl бесдивергентного шумового потенциала
- *     ψ  →  v = (∂ψ/∂y, −∂ψ/∂x);  curl не сжимает/растягивает → нет полос и «резинки»;
- *   • плотность переносится semi-Lagrangian-адвекцией (метод Стама, безусловно
- *     устойчива), поэтому клубится, сворачивается и складывается как настоящий пар;
- *   • слабая релаксация к «подпитке» (движущийся с ветром fbm) не даёт полю
- *     опустеть и добавляет рождение/растворение клубов;
- *   • слои дрейфуют в РАЗНЫЕ стороны (аркадный параллакс);
- *   • взрывы пробивают ВСЕ слои и оставляют стойкую дыру (поле hole): она дрейфует
- *     с облаками и почти не заживает; маяк лишь слегка разгоняет плотность вокруг себя.
- *
- * Рендер идёт в уменьшенный оффскрин и растягивается билинейно (дёшево).
+ * Облака — это МНОЖЕСТВО мягких клубов (puffs), а не сетка с альфой.
+ *   • каждый клуб плывёт по ветру + curl-шуму (парение) и тянется к плотности
+ *     соседей (кучкуется); клубы въезжают с одного края и уезжают за другой —
+ *     облака «появляются» движением, а не проявлением прозрачности;
+ *   • взрыв физически РАЗГОНЯЕТ клубы наружу — настоящая волна декомпрессии,
+ *     дыра открывается и сама затягивается, когда клубы приплывают обратно;
+ *   • рендер — метаболы: клубы штампуются в поле плотности, поле режется по
+ *     порогу → ЧЁТКИЕ облака без длинного альфа-градиента (нет «помутнения»).
+ * planck (Box2D-порт) частиц не имеет — это своя лёгкая система клубов.
  */
-var CLOUD_CELL = 12;      /* px на ячейку симуляции (экранные) */
-var gw = 0, gh = 0;       /* размеры сетки */
-var tw = 0;               /* флаг готовности (ненулевой = сетка создана) */
-var cloudDownscale = 2;   /* уменьшение оффскрина рендера (nearest-upscale → пиксельность) */
+var CLOUD_CELL = 9;        /* px на ячейку поля метаболов */
+var fw = 0, fh = 0;        /* размеры поля */
+var tw = 0;                /* флаг готовности */
+var cloudDownscale = 2;    /* уменьшение оффскрина рендера (nearest → пиксельность) */
 var _simTime = 0;
-var _psiGrid = null;      /* потенциал скорости (переиспользуемый буфер) */
-var HOLE_DECAY = 0.9994;  /* затухание пробитых дыр за шаг (≈0 → почти не заживают) */
-/* Детализация/зерно рендера — грубая симуляция + мелкий шум = чёткая гранулярность */
-var DETAIL_AMP = 0.30;    /* сила мелкой структуры внутри облаков */
-var DETAIL_FREQ = 0.16;   /* частота зерна (больше → мельче) */
-var DITHER_AMP = 0.07;    /* упорядоченный дизеринг краёв (пиксельность) */
-var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5]; /* 4×4 Bayer /16 */
+var CLOUD_T = 0.46;        /* порог «есть облако» */
+var DETAIL_AMP = 0.10;     /* лёгкое зерно внутри облаков */
+var DETAIL_FREQ = 0.16;
+var DITHER_AMP = 0.10;     /* дизеринг кромки (гранулярность вместо резкого пикселя) */
+var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
 
-/* drift/curl/tspd = движение облаков; curl = кучерявость (завихрения) */
+/* Слои клубов (1–2, без альфа-пелены). deck прячет врагов, high — тонкий сверху. */
 var cloudLayers = [
-  { name:'deck', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:false,
-    driftX: 3,    driftY: 7.5,  curl: 68, pf:0.100, tspd:0.165, sf:0.0090, relax:0.028,
-    alpha:0.74, altitude:0.15 },
-  { name:'high', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:false,
-    driftX:-4.5,  driftY:-5.25, curl: 55, pf:0.110, tspd:0.150, sf:0.0100, relax:0.026,
-    alpha:0.80, altitude:0.85 },
-  { name:'veil', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:true,
-    driftX: 6,    driftY: 12,   curl: 45, pf:0.140, tspd:0.225, sf:0.0130, relax:0.032,
-    alpha:0.34, altitude:0.55 }
+  { name:'deck', puffs:[], field:null, count:340, rMin:26, rMax:56, dx: 6, dy: 3.5, curl:26, dseek:6, alpha:1.00, enabled:true },
+  { name:'high', puffs:[], field:null, count:150, rMin:18, rMax:40, dx:-5, dy:-2.5, curl:22, dseek:5, alpha:0.90, enabled:true }
 ];
-var craters = []; /* {layerIdx, gx, gy, r, maxR, growth, strength} — выеденные дыры */
+var craters = []; /* ударные кольца декомпрессии {x,y,r,maxR,life,color} */
 
-/* ── Быстрый целочисленный хеш (без Math.sin — дёшево для сетки каждый кадр) ── */
+/* ── Быстрый хеш + шум (для curl-парения и зерна) ── */
 function _hash(ix, iy) {
   var h = Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  h ^= h >>> 16;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
   return (h >>> 0) / 4294967295;
 }
 function _smoothNoise(x, y) {
   var ix = Math.floor(x), iy = Math.floor(y);
   var fx = x - ix, fy = y - iy;
-  fx = fx * fx * (3 - 2 * fx);
-  fy = fy * fy * (3 - 2 * fy);
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
   var a = _hash(ix, iy), b = _hash(ix + 1, iy), c = _hash(ix, iy + 1), d = _hash(ix + 1, iy + 1);
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
-/* Анимированный 3D-ish шум: две плоскости по Z с лерпом (плавная мутация во времени) */
 function _noise3(x, y, z) {
   var z0 = Math.floor(z), fz = z - z0; fz = fz * fz * (3 - 2 * fz);
   var a = _smoothNoise(x + z0 * 19.3, y - z0 * 11.7);
@@ -574,205 +557,157 @@ function _fbm3(x, y, z) {
   return _noise3(x, y, z) * 0.65 + _noise3(x * 2.17 + 9.2, y * 2.17 - 4.3, z * 1.7 + 2.1) * 0.35;
 }
 
-/* ── Билинейная выборка сетки (с клампом краёв) ── */
 function sampleGrid(g, fx, fy) {
-  if (fx < 0) fx = 0; else if (fx > gw - 1.001) fx = gw - 1.001;
-  if (fy < 0) fy = 0; else if (fy > gh - 1.001) fy = gh - 1.001;
-  var ix = fx | 0, iy = fy | 0;
-  var tx = fx - ix, ty = fy - iy;
-  var i = iy * gw + ix;
-  var a = g[i], b = g[i + 1], c = g[i + gw], d = g[i + gw + 1];
+  if (fx < 0) fx = 0; else if (fx > fw - 1.001) fx = fw - 1.001;
+  if (fy < 0) fy = 0; else if (fy > fh - 1.001) fy = fh - 1.001;
+  var ix = fx | 0, iy = fy | 0, tx = fx - ix, ty = fy - iy, i = iy * fw + ix;
+  var a = g[i], b = g[i + 1], c = g[i + fw], d = g[i + fw + 1];
   return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
 }
 
-/* «Подпитка» — движущееся с ветром слоя поле fbm (клубы рождаются/тают) */
-function supplyAt(layer, i, j) {
-  var sxp = i * CLOUD_CELL - layer.driftX * _simTime;
-  var syp = j * CLOUD_CELL - layer.driftY * _simTime;
-  var f = layer.sf;
-  var n = _fbm3(sxp * f + layer.seed0, syp * f, _simTime * 0.05 + layer.seed0);
-  n = (n - 0.5) * 1.55 + cloudSupplyBias; /* смещение = густота (плавно растёт к ночи) */
-  return n < 0 ? 0 : n;          /* плотность неотрицательна (для корректного выедания дыр) */
-}
+var cloudDarkMult = 1.0;   /* 1.0 = день, ~0.45 = ночь */
+var cloudSupplyBias = 0.5; /* густота: масштабирует радиус клубов */
 
-/* ── Инициализация полей ── */
+function _spawnPuff(layer, seeded) {
+  return {
+    x: Math.random() * W, y: Math.random() * H,
+    r0: layer.rMin + Math.random() * (layer.rMax - layer.rMin),
+    r: 0, vx: 0, vy: 0
+  };
+}
 function initCloudMap(width, height) {
-  gw = Math.max(4, Math.ceil(width / CLOUD_CELL) + 1);
-  gh = Math.max(4, Math.ceil(height / CLOUD_CELL) + 1);
-  tw = gw; /* флаг готовности */
-  _simTime = 0;
-  craters = [];
-  _psiGrid = new Float32Array(gw * gh);
+  fw = Math.max(4, Math.ceil(width / CLOUD_CELL) + 1);
+  fh = Math.max(4, Math.ceil(height / CLOUD_CELL) + 1);
+  tw = fw; _simTime = 0; craters = [];
   for (var li = 0; li < cloudLayers.length; li++) {
     var L = cloudLayers[li];
-    L.seed0 = (li + 1) * 137.13;
-    L.den = new Float32Array(gw * gh);
-    L.tmp = new Float32Array(gw * gh);
-    L.hole = new Float32Array(gw * gh);    /* поле пробитых дыр (вычитается из плотности) */
-    L.holeTmp = new Float32Array(gw * gh);
-    L.holeActive = false;
-    /* стартовое заполнение — сразу облачно */
-    for (var j = 0; j < gh; j++) {
-      for (var i = 0; i < gw; i++) {
-        L.den[j * gw + i] = supplyAt(L, i, j);
+    L.field = new Float32Array(fw * fh);
+    L.puffs = [];
+    for (var k = 0; k < L.count; k++) { var p = _spawnPuff(L); p.r = p.r0; L.puffs.push(p); }
+  }
+  stampFields();
+}
+
+/* Штамп всех клубов слоя в его поле плотности (метаболы) */
+function stampFields() {
+  for (var li = 0; li < cloudLayers.length; li++) {
+    var L = cloudLayers[li]; if (!L.enabled) continue;
+    var fld = L.field; fld.fill(0);
+    var pf = L.puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k];
+      var rr = p.r * (0.7 + cloudSupplyBias * 0.6); /* густота меняет размер, а не альфу */
+      var cxc = p.x / CLOUD_CELL, cyc = p.y / CLOUD_CELL, rc = rr / CLOUD_CELL;
+      var i0 = Math.floor(cxc - rc), i1 = Math.floor(cxc + rc);
+      var j0 = Math.floor(cyc - rc), j1 = Math.floor(cyc + rc);
+      if (i0 < 0) i0 = 0; if (j0 < 0) j0 = 0;
+      if (i1 > fw - 1) i1 = fw - 1; if (j1 > fh - 1) j1 = fh - 1;
+      var inv = 1 / (rc || 1);
+      for (var j = j0; j <= j1; j++) {
+        var dy = j - cyc, base = j * fw;
+        for (var i = i0; i <= i1; i++) {
+          var dx = i - cxc, d = Math.sqrt(dx * dx + dy * dy) * inv;
+          if (d < 1) { var w = 1 - d; fld[base + i] += w * w; }
+        }
       }
     }
   }
 }
 
-/* ── Шаг симуляции всех слоёв (вызывается каждый кадр) ── */
+/* Шаг: движение клубов (ветер + curl-парение + тяга к плотности + инерция взрыва) */
 function scrollClouds(dt) {
   if (tw === 0) return;
-  if (dt > 0.05) dt = 0.05; /* защита от больших скачков */
+  if (dt > 0.05) dt = 0.05;
   _simTime += dt;
-  var invCell = 1 / CLOUD_CELL;
+  var tt = _simTime * 0.12, e = 1.6, s = 0.010;
+  var pad = 60;
   for (var li = 0; li < cloudLayers.length; li++) {
-    var L = cloudLayers[li];
-    if (!L.enabled) continue;
-    var den = L.den, tmp = L.tmp, psi = _psiGrid;
-    var pf = L.pf, tsp = _simTime * L.tspd + L.seed0, curl = L.curl, relax = L.relax;
-    var advHole = L.holeActive, hole = L.hole, holeTmp = L.holeTmp, maxHole = 0;
-
-    /* 1) Потенциал скорости ψ на сетке (анимированный) */
-    for (var j = 0; j < gh; j++) {
-      var rowo = j * gw;
-      for (var i = 0; i < gw; i++) {
-        psi[rowo + i] = _fbm3(i * pf + L.seed0, j * pf, tsp);
-      }
+    var L = cloudLayers[li]; if (!L.enabled) continue;
+    var fld = L.field, pf = L.puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k];
+      /* curl бездивергентного шума → парение/завихрение */
+      var n1 = _fbm3(p.x * s, (p.y + e) * s, tt), n2 = _fbm3(p.x * s, (p.y - e) * s, tt);
+      var n3 = _fbm3((p.x + e) * s, p.y * s, tt), n4 = _fbm3((p.x - e) * s, p.y * s, tt);
+      var curlx = (n1 - n2), curly = -(n3 - n4);
+      /* тяга к более плотным соседям (кучкование) — градиент поля прошлого кадра */
+      var gx = p.x / CLOUD_CELL, gy = p.y / CLOUD_CELL;
+      var dseekx = sampleGrid(fld, gx + 1, gy) - sampleGrid(fld, gx - 1, gy);
+      var dseeky = sampleGrid(fld, gx, gy + 1) - sampleGrid(fld, gx, gy - 1);
+      /* целевая скорость */
+      var tvx = L.dx + curlx * L.curl + dseekx * L.dseek;
+      var tvy = L.dy + curly * L.curl + dseeky * L.dseek;
+      p.vx += (tvx - p.vx) * 3.5 * dt;
+      p.vy += (tvy - p.vy) * 3.5 * dt;
+      p.vx *= 0.985; p.vy *= 0.985; /* инерция взрыва гаснет */
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      /* въезд с краёв: заезжает за край — появляется с противоположного */
+      if (p.x < -pad) p.x += W + pad * 2; else if (p.x > W + pad) p.x -= W + pad * 2;
+      if (p.y < -pad) p.y += H + pad * 2; else if (p.y > H + pad) p.y -= H + pad * 2;
+      /* восстановление радиуса после сжатия взрывом */
+      if (p.r < p.r0) p.r += (p.r0 - p.r) * 1.2 * dt;
     }
-
-    /* 2) Адвекция плотности по v = drift + curl(ψ), затем релаксация к подпитке.
-       Поле дыр адвектируется тем же течением (дыры дрейфуют с облаками) и почти
-       не затухает → выстрелы не «заживают». */
-    for (var jj = 0; jj < gh; jj++) {
-      var jp1 = jj + 1; if (jp1 > gh - 1) jp1 = gh - 1;
-      var jm1 = jj - 1; if (jm1 < 0) jm1 = 0;
-      var ro = jj * gw;
-      for (var ii = 0; ii < gw; ii++) {
-        var ip1 = ii + 1; if (ip1 > gw - 1) ip1 = gw - 1;
-        var im1 = ii - 1; if (im1 < 0) im1 = 0;
-        /* v = (∂ψ/∂y, −∂ψ/∂x) * curl + дрейф  (бездивергентно → без растяжения) */
-        var vx = (psi[jp1 * gw + ii] - psi[jm1 * gw + ii]) * curl + L.driftX;
-        var vy = -(psi[ro + ip1] - psi[ro + im1]) * curl + L.driftY;
-        /* semi-Lagrangian: откуда пришла плотность */
-        var fx = ii - vx * dt * invCell;
-        var fy = jj - vy * dt * invCell;
-        var adv = sampleGrid(den, fx, fy);
-        var sup = supplyAt(L, ii, jj);
-        tmp[ro + ii] = adv + (sup - adv) * relax;
-        if (advHole) {
-          var hv = sampleGrid(hole, fx, fy) * HOLE_DECAY;
-          holeTmp[ro + ii] = hv;
-          if (hv > maxHole) maxHole = hv;
-        }
-      }
-    }
-    /* swap */
-    L.den = tmp; L.tmp = den;
-    if (advHole) { L.hole = holeTmp; L.holeTmp = hole; if (maxHole < 0.02) L.holeActive = false; }
   }
+  stampFields();
 }
 
-/* ── Плотность нижнего слоя в экранной точке — для смог-освещения ── */
+/* Плотность нижнего слоя в экранной точке (для смог-освещения) */
 function getHeightAt(screenX, screenY) {
   if (tw === 0) return 0.4;
-  var L = cloudLayers[0];
-  var gx = screenX / CLOUD_CELL, gy = screenY / CLOUD_CELL;
-  var v = sampleGrid(L.den, gx, gy);
-  if (L.holeActive) v -= sampleGrid(L.hole, gx, gy);
-  return v < 0 ? 0 : v;
+  return sampleGrid(cloudLayers[0].field, screenX / CLOUD_CELL, screenY / CLOUD_CELL);
 }
 
-/* ── Маяк выедает плотность вокруг себя (в каждом слое) ── */
+/* Маяк слегка расталкивает клубы вокруг себя */
 function repelCloudsFromLighthouse() {
   if (tw === 0 || !state || !state.colonized || !state.waveActive) return;
-  var lh = state.lighthouse;
-  var sc = toScreen(lh.x, lh.y);
-  var gx = sc[0] / CLOUD_CELL, gy = sc[1] / CLOUD_CELL;
-  var rad = (0.7 * lhScale) / CLOUD_CELL + 0.6;
-  var rC = Math.ceil(rad) + 1;
-  var cxI = Math.round(gx), cyI = Math.round(gy);
+  var sc = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var rad = 0.7 * lhScale + 14;
   for (var li = 0; li < cloudLayers.length; li++) {
-    var L = cloudLayers[li];
-    if (!L.enabled) continue;
-    for (var dj = -rC; dj <= rC; dj++) {
-      var j = cyI + dj; if (j < 0 || j >= gh) continue;
-      for (var di = -rC; di <= rC; di++) {
-        var i = cxI + di; if (i < 0 || i >= gw) continue;
-        var dx = i - gx, dy = j - gy, d = Math.sqrt(dx * dx + dy * dy);
-        if (d < rad) {
-          var f = 1 - d / rad; f *= f;
-          var idx = j * gw + i;
-          L.den[idx] -= L.den[idx] * 0.5 * f;
-        }
-      }
+    var pf = cloudLayers[li].puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k], dx = p.x - sc[0], dy = p.y - sc[1], d = Math.sqrt(dx * dx + dy * dy);
+      if (d < rad && d > 1) { var f = (1 - d / rad) * 60; p.vx += dx / d * f * 0.016; p.vy += dy / d * f * 0.016; }
     }
   }
 }
 
-/* ── Палитра плотности → RGB (упаковано в int) ── */
-var cloudDarkMult = 1.0;      /* 1.0 = день, ~0.45 = ночь (плавно) */
-var cloudSupplyBias = 0.50;   /* густота облаков (плавно растёт к ночи) */
+/* ── Палитра плотности → RGB ── */
 function heightToColor(h) {
-  var contrast = (h - 0.5) * 2.5 + 0.5;
+  var contrast = (h - 0.5) * 2.2 + 0.5;
   if (contrast < 0) contrast = 0; else if (contrast > 1) contrast = 1;
   var r, g, b;
-  if (contrast < 0.3) {
-    var t = contrast / 0.3;
-    r = 2 + t * 3; g = 2 + t * 4; b = 4 + t * 6;
-  } else if (contrast < 0.45) {
-    var t2 = (contrast - 0.3) / 0.15;
-    r = 5 + t2 * 15; g = 6 + t2 * 18; b = 10 + t2 * 20;
-  } else if (contrast < 0.6) {
-    var t3 = (contrast - 0.45) / 0.15;
-    r = 20 + t3 * 25; g = 24 + t3 * 28; b = 30 + t3 * 30;
-  } else if (contrast < 0.75) {
-    var t4 = (contrast - 0.6) / 0.15;
-    r = 45 + t4 * 35; g = 52 + t4 * 40; b = 60 + t4 * 40;
-  } else {
-    var t5 = (contrast - 0.75) / 0.25;
-    r = 80 + t5 * 50; g = 92 + t5 * 55; b = 100 + t5 * 55;
-  }
+  if (contrast < 0.3) { var t = contrast / 0.3; r = 8 + t * 12; g = 10 + t * 14; b = 14 + t * 18; }
+  else if (contrast < 0.6) { var t3 = (contrast - 0.3) / 0.3; r = 20 + t3 * 40; g = 24 + t3 * 44; b = 32 + t3 * 46; }
+  else { var t5 = (contrast - 0.6) / 0.4; r = 60 + t5 * 70; g = 68 + t5 * 76; b = 78 + t5 * 74; }
   r *= cloudDarkMult; g *= cloudDarkMult; b *= cloudDarkMult;
   return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
 }
 
-/* ── Рендер облаков в уменьшенный offscreen → drawImage с интерполяцией ── */
+/* ── Рендер: поле метаболов → чёткие облака в уменьшенный offscreen ── */
 var _cloudCvs = null, _cloudCtx2 = null, _cloudImgData = null, _cloudOW = 0, _cloudOH = 0;
 function renderCloudsToCtx(destCtx, w, h, layerFilter) {
   layerFilter = layerFilter || null;
   if (tw === 0) return;
-
   var ds = cloudDownscale;
   var ow = Math.ceil(w / ds), oh = Math.ceil(h / ds);
   if (!_cloudCvs) { _cloudCvs = document.createElement('canvas'); _cloudCtx2 = _cloudCvs.getContext('2d'); }
-  if (_cloudOW !== ow || _cloudOH !== oh) {
-    _cloudCvs.width = ow; _cloudCvs.height = oh;
-    _cloudOW = ow; _cloudOH = oh;
-    _cloudImgData = _cloudCtx2.createImageData(ow, oh);
-  }
+  if (_cloudOW !== ow || _cloudOH !== oh) { _cloudCvs.width = ow; _cloudCvs.height = oh; _cloudOW = ow; _cloudOH = oh; _cloudImgData = _cloudCtx2.createImageData(ow, oh); }
   var data = _cloudImgData.data;
   for (var z = 0; z < data.length; z += 4) { data[z] = 0; data[z+1] = 0; data[z+2] = 0; data[z+3] = 0; }
 
-  /* ── Параметры красных лучей маяка ── */
+  /* луч маяка */
   var beamActive = state && state.colonized;
-  var lhSx = 0, lhSy = 0, dirX1 = 1, dirY1 = 0, dirX2 = -1, dirY2 = 0;
-  var scanLenSq = 0, cosThreshold = 1, nightBright = 1;
+  var lhSx = 0, lhSy = 0, dirX1 = 1, dirY1 = 0, dirX2 = -1, dirY2 = 0, scanLenSq = 0, cosThreshold = 1, nightBright = 1;
   var lhAbove = (state && state.lhAbove) || 0;
   if (beamActive) {
-    var lh = state.lighthouse;
-    var bc = toScreen(lh.x, lh.y);
+    var bc = toScreen(state.lighthouse.x, state.lighthouse.y);
     lhSx = bc[0]; lhSy = bc[1];
-    var br = 0.7 * lhScale;
-    var nf = (state && state.nightFactor) || 0;   /* 0=день … 1=ночь, плавно */
-    var reach = 1.25 + nf * 0.55;                 /* ночью светят дальше (плавно) */
-    nightBright = 1.0 + nf * 0.7;                 /* ночью ярче (плавно) */
-    var scanLen = br * CFG.SCANNER_RANGE_MULT * 5.4 * reach; /* дальность значительно больше */
-    scanLenSq = scanLen * scanLen;
-    cosThreshold = Math.cos(0.25);
-    var beamRot = state.time * 0.45;              /* вращение на 25% медленнее */
-    dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot);
-    dirX2 = -dirX1; dirY2 = -dirY1;
+    var br = 0.7 * lhScale, nf = (state && state.nightFactor) || 0;
+    var reach = 1.25 + nf * 0.55; nightBright = 1.0 + nf * 0.7;
+    var scanLen = br * CFG.SCANNER_RANGE_MULT * 5.4 * reach;
+    scanLenSq = scanLen * scanLen; cosThreshold = Math.cos(0.25);
+    var beamRot = state.time * 0.45;
+    dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot); dirX2 = -dirX1; dirY2 = -dirY1;
   }
 
   var invCell = 1 / CLOUD_CELL;
@@ -780,99 +715,54 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     var layer = cloudLayers[layerIdx];
     if (!layer.enabled) continue;
     if (layerFilter !== null && layerFilter.indexOf(layerIdx) === -1) continue;
-    var xstep = layer.cheap ? 2 : 1;
-    var la255 = layer.alpha * 255;
-    var den = layer.den;
-    var hasHole = layer.holeActive, hole = layer.hole;
-
-    /* Насколько луч просвечивает ЭТОТ слой: нижний — полностью, дальние — меньше,
-       и тем сильнее пробивает, чем выше поднят маяк (lhAbove). */
-    var altGap = layer.altitude - cloudLayers[0].altitude; if (altGap < 0) altGap = 0;
-    var beamPen = 1 - altGap * (0.7 - 0.45 * lhAbove);  /* дальний слой просвечивает сильнее, чем раньше */
+    var fld = layer.field, la = layer.alpha;
+    var altGap = layerIdx * 0.7;
+    var beamPen = 1 - altGap * (0.7 - 0.45 * lhAbove);
     if (beamPen < 0.4) beamPen = 0.4; else if (beamPen > 1) beamPen = 1;
 
     for (var oy = 0; oy < oh; oy++) {
-      var sy = oy * ds;
-      var gy = sy * invCell;
-      var rowOff = oy * ow * 4;
-      var dyBeam = sy - lhSy;
-
-      for (var ox = 0; ox < ow; ox += xstep) {
+      var sy = oy * ds, gy = sy * invCell, rowOff = oy * ow * 4, dyBeam = sy - lhSy;
+      for (var ox = 0; ox < ow; ox++) {
         var sx = ox * ds;
-        var gxs = sx * invCell;
-        var hVal = sampleGrid(den, gxs, gy);
-        if (hasHole) hVal -= sampleGrid(hole, gxs, gy); /* пробитые дыры не заживают */
+        var hVal = sampleGrid(fld, sx * invCell, gy);
+        if (hVal < 0.04) continue; /* чистое небо */
 
-        /* Мелкая структура, ползущая ВМЕСТЕ с облаком (высокочастотно → зерно, не полосы),
-           модулируется плотностью, чтобы не «шуметь» в чистом небе. */
-        var pres = hVal < 0 ? 0 : (hVal > 1 ? 1 : hVal);
-        if (pres > 0.02) {
-          var dux = sx - layer.driftX * _simTime;
-          var duy = sy - layer.driftY * _simTime;
-          var det = _smoothNoise(dux * DETAIL_FREQ + layer.seed0, duy * DETAIL_FREQ) * 0.67
-                  + _smoothNoise(dux * DETAIL_FREQ * 2.7 + 40.0, duy * DETAIL_FREQ * 2.7) * 0.33;
-          hVal += (det - 0.5) * DETAIL_AMP * pres;
-        }
-        /* упорядоченный дизеринг — гранулярные пиксельные края */
+        /* лёгкое зерно + дизеринг кромки (гранулярность, не альфа-пелена) */
+        var det = _smoothNoise((sx - layer.dx * _simTime) * DETAIL_FREQ, (sy - layer.dy * _simTime) * DETAIL_FREQ);
+        hVal += (det - 0.5) * DETAIL_AMP;
         hVal += (_BAYER[(oy & 3) * 4 + (ox & 3)] * 0.0625 - 0.5) * DITHER_AMP;
 
-        /* ── Красный луч маяка: прозрачность в центре + красная заливка/кромка ── */
         var redRim = 0;
         if (beamActive) {
-          var dxB = sx - lhSx;
-          var distSq = dxB * dxB + dyBeam * dyBeam;
+          var dxB = sx - lhSx, distSq = dxB * dxB + dyBeam * dyBeam;
           if (distSq > 4 && distSq < scanLenSq) {
-            var invDist = 1 / Math.sqrt(distSq);
-            var inBeam = 0;
-            var dot1 = dxB * dirX1 + dyBeam * dirY1;
-            var cosA1 = dot1 * invDist;
-            if (cosA1 > cosThreshold && dot1 > 0) {
-              inBeam = (1 - distSq / scanLenSq) * ((cosA1 - cosThreshold) / (1 - cosThreshold));
-            } else {
-              var dot2 = dxB * dirX2 + dyBeam * dirY2;
-              var cosA2 = dot2 * invDist;
-              if (cosA2 > cosThreshold && dot2 > 0) {
-                inBeam = (1 - distSq / scanLenSq) * ((cosA2 - cosThreshold) / (1 - cosThreshold));
-              }
-            }
-            if (inBeam > 0) {
-              if (inBeam > 1) inBeam = 1;
-              var clear = inBeam * beamPen;
-              hVal -= clear * 0.72;   /* сильнее просвечивание обоих слоёв */
-              /* эффектный прожектор: яркая кромка + мягкая красная заливка вдоль всего луча */
-              redRim = (clear * (1 - clear) * 5.0 + clear * 0.4) * nightBright * beamPen;
-            }
+            var invDist = 1 / Math.sqrt(distSq), inBeam = 0;
+            var dot1 = dxB * dirX1 + dyBeam * dirY1, cosA1 = dot1 * invDist;
+            if (cosA1 > cosThreshold && dot1 > 0) inBeam = (1 - distSq / scanLenSq) * ((cosA1 - cosThreshold) / (1 - cosThreshold));
+            else { var dot2 = dxB * dirX2 + dyBeam * dirY2, cosA2 = dot2 * invDist; if (cosA2 > cosThreshold && dot2 > 0) inBeam = (1 - distSq / scanLenSq) * ((cosA2 - cosThreshold) / (1 - cosThreshold)); }
+            if (inBeam > 0) { if (inBeam > 1) inBeam = 1; var clear = inBeam * beamPen; hVal -= clear * 0.9; redRim = (clear * (1 - clear) * 5.0 + clear * 0.4) * nightBright * beamPen; }
           }
         }
 
-        var c = heightToColor(hVal);
-        var alpha = hVal < 0.28 ? 0 : Math.min(255, ((hVal - 0.28) / 0.35) * 255);
+        /* ЧЁТКИЙ порог: есть облако или нет (без длинного альфа-градиента) */
+        if (hVal < CLOUD_T) continue;
+        var c = heightToColor(0.55 + (hVal - CLOUD_T) * 0.6);
         var cr = (c >> 16) & 0xff, cg = (c >> 8) & 0xff, cb = c & 0xff;
+        if (redRim > 0) { if (redRim > 1) redRim = 1; cr = (cr * (1 - redRim * 0.35) + 235 * redRim) | 0; if (cr > 255) cr = 255; cg = (cg * (1 - redRim * 0.8)) | 0; cb = (cb * (1 - redRim * 0.65)) | 0; }
 
-        if (redRim > 0 && alpha > 0) {
-          if (redRim > 1) redRim = 1;
-          cr = (cr * (1 - redRim * 0.35) + 235 * redRim) | 0; if (cr > 255) cr = 255;
-          cg = (cg * (1 - redRim * 0.8)) | 0;
-          cb = (cb * (1 - redRim * 0.65)) | 0;
-        }
-
-        var layerAlpha = (alpha * la255 / 255) | 0;
-        for (var sxi = 0; sxi < xstep; sxi++) {
-          var oxx = ox + sxi;
-          if (oxx >= ow) break;
-          var off = rowOff + oxx * 4;
-          var na = data[off+3] + layerAlpha;
-          data[off]   = Math.min(255, data[off]   + cr * layerAlpha / 255) | 0;
-          data[off+1] = Math.min(255, data[off+1] + cg * layerAlpha / 255) | 0;
-          data[off+2] = Math.min(255, data[off+2] + cb * layerAlpha / 255) | 0;
-          data[off+3] = na > 255 ? 255 : na;
-        }
+        var off = rowOff + ox * 4;
+        var la255 = (la * 255) | 0;
+        var na = data[off + 3] + la255;
+        data[off]     = Math.min(255, data[off]     + cr * la255 / 255) | 0;
+        data[off + 1] = Math.min(255, data[off + 1] + cg * la255 / 255) | 0;
+        data[off + 2] = Math.min(255, data[off + 2] + cb * la255 / 255) | 0;
+        data[off + 3] = na > 255 ? 255 : na;
       }
     }
   }
   _cloudCtx2.putImageData(_cloudImgData, 0, 0);
   var prevSmooth = destCtx.imageSmoothingEnabled;
-  destCtx.imageSmoothingEnabled = false; /* nearest-upscale → чёткие пиксели вместо мыла */
+  destCtx.imageSmoothingEnabled = false;
   destCtx.drawImage(_cloudCvs, 0, 0, ow, oh, 0, 0, w, h);
   destCtx.imageSmoothingEnabled = prevSmooth;
 }
@@ -910,6 +800,10 @@ function freshState() {
     selectedAmmo: 0,
     colonyTier: 0,
     perks: freshPerks(),
+    cities: [],        /* прокачиваемые города {x,y,r,up:{plant,pop,sci,cap},feed,flicker} */
+    foundSites: [],    /* кратеры, где можно заложить новый город */
+    volley: [],        /* отложенные бонусные выстрелы (гигаконденсаторы) */
+    activeCity: -1,    /* индекс города с открытой панелью прокачки, -1 = закрыта */
     shakeTimer: 0,
     shakeIntensity: 0,
     gameOver: false,
@@ -933,7 +827,159 @@ function freshState() {
   };
 }
 function perkLvl(id){ return state.perks[id]||0; }
-function tier(){ return COLONY_TIERS[state.colonyTier]; }
+/* ═══════════════ ГОРОДА И ИХ ПРОКАЧКА ═══════════════ */
+var CITY_FOUND_COST = 80;
+var CITY_UPGRADES = [
+  { key:'plant', icon:'⚡', name:'ЭЛЕКТРОСТАНЦИЯ', max:5, base:20, step:14 }, /* +заряд/урон, провода с током */
+  { key:'pop',   icon:'👥', name:'НАСЕЛЕНИЕ',      max:3, base:35, step:30 }, /* ×бонус отдыха */
+  { key:'sci',   icon:'🔬', name:'НАУКА',          max:4, base:30, step:26 }, /* бонусы снарядам + новые боеприпасы */
+  { key:'cap',   icon:'🔋', name:'ГИГАКОНДЕНСАТОР',max:3, base:50, step:45 }  /* доп. выстрел с задержкой */
+];
+var SCI_PERK_ORDER = ['chain_lightning','crit','fast_charge','range','tesla','vortex','overcharge','singularity'];
+
+/* Суммарные бонусы со всех городов */
+function cityAgg() {
+  var a = { plant:0, pop:0, sci:0, cap:0, capCities:0, n:0 };
+  if (state && state.cities) {
+    a.n = state.cities.length;
+    for (var i = 0; i < state.cities.length; i++) {
+      var u = state.cities[i].up;
+      a.plant += u.plant; a.pop += u.pop; a.sci += u.sci; a.cap += u.cap;
+      if (u.cap > 0) a.capCities++;
+    }
+  }
+  a.chargeMult = 1 + a.plant * 0.10;
+  a.dmgMult    = 1 + a.plant * 0.03;
+  a.restMult   = 1 + a.pop * 1.0;          /* население: ×2 при 1 ур., ×3 при 2 … */
+  a.extraShots = Math.max(0, a.n - 1) + a.capCities; /* 2 города с конденсаторами → 4 выстрела */
+  return a;
+}
+function tier() { return cityAgg(); } /* совместимость: tier().dmgMult / tier().chargeMult */
+
+function foundCity(sx, sy) {
+  state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0 }, feed:0, flicker:0, born: state.time });
+  state.lives += 1;
+  /* декоративный рост города из кратера */
+  var numRays = 3 + Math.floor(Math.random() * 4);
+  for (var ri = 0; ri < numRays; ri++) {
+    cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+  }
+  showWaveText('🏙 НОВЫЙ ГОРОД');
+  buildAmmoBar();
+}
+
+function grantSciPerk() {
+  for (var i = 0; i < SCI_PERK_ORDER.length; i++) {
+    var id = SCI_PERK_ORDER[i], mx = 1;
+    for (var k = 0; k < PERK_DEFS.length; k++) if (PERK_DEFS[k].id === id) mx = PERK_DEFS[k].maxLvl;
+    if ((state.perks[id] || 0) < mx) { state.perks[id] = (state.perks[id] || 0) + 1; return; }
+  }
+}
+function buyCityUpgrade(city, key) {
+  for (var i = 0; i < CITY_UPGRADES.length; i++) {
+    var u = CITY_UPGRADES[i];
+    if (u.key !== key) continue;
+    var lvl = city.up[key];
+    if (lvl >= u.max) return;
+    var cost = u.base + u.step * lvl;
+    if (state.energy < cost) return;
+    state.energy -= cost; city.up[key]++;
+    if (key === 'sci') { grantSciPerk(); buildAmmoBar(); }
+    city.feed = 0.6; city.flicker = 0.5;
+    updateHUD();
+    return;
+  }
+}
+
+function triggerCityFeed() {
+  for (var i = 0; i < state.cities.length; i++) {
+    state.cities[i].feed = 0.6;
+    if (state.cities[i].up.cap > 0) state.cities[i].flicker = 0.5;
+  }
+}
+function updateVolley(dt) {
+  for (var i = state.volley.length - 1; i >= 0; i--) {
+    var v = state.volley[i]; v.delay -= dt;
+    if (v.delay <= 0) {
+      fireProjectile(v.x, v.y, v.nx, v.ny, v.speed, v.charge, v.ammoIdx);
+      triggerCityFeed();
+      state.volley.splice(i, 1);
+    }
+  }
+}
+function updateCities(dt) {
+  var charging = state.dragging;
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i];
+    if (charging) c.feed = Math.max(c.feed, 0.35);
+    c.feed -= dt * 1.4; if (c.feed < 0) c.feed = 0;
+    c.flicker -= dt * 1.3; if (c.flicker < 0) c.flicker = 0;
+  }
+}
+
+/* Позиции электростанций между городом и башней (ближе к башне) */
+function plantPositions(city) {
+  var out = [];
+  var P = city.up.plant; if (P <= 0) return out;
+  var lh = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var dx = lh[0] - city.x, dy = lh[1] - city.y;
+  var len = Math.sqrt(dx * dx + dy * dy) || 1;
+  var px = -dy / len, py = dx / len;
+  for (var k = 0; k < P; k++) {
+    var t = 0.52 + 0.11 * k;
+    var off = (k % 2 ? 1 : -1) * (13 + 6 * (k >> 1));
+    out.push({ x: city.x + dx * t + px * off, y: city.y + dy * t + py * off });
+  }
+  return out;
+}
+
+/* ── Хит-боксы иконок (экранные координаты) ── */
+function cityIconRect(c) { return { x: c.x - 13, y: c.y - c.r - 30, w: 26, h: 26 }; }
+function foundIconRect(s) { return { x: s.x - 15, y: s.y - 32, w: 30, h: 26 }; }
+function cityPanelButtons(city) {
+  var bw = 172, bh = 30, gap = 6, N = CITY_UPGRADES.length;
+  var bx = city.x + 26, by = city.y - (N * (bh + gap)) / 2;
+  if (bx + bw > W - 6) bx = city.x - 26 - bw;
+  if (bx < 6) bx = 6;
+  if (by < 44) by = 44;
+  if (by + N * (bh + gap) > H - 30) by = H - 30 - N * (bh + gap);
+  var out = [];
+  for (var i = 0; i < N; i++) {
+    var u = CITY_UPGRADES[i], lvl = city.up[u.key], maxed = lvl >= u.max, cost = u.base + u.step * lvl;
+    out.push({ x: bx, y: by + i * (bh + gap), w: bw, h: bh, def: u, level: lvl, maxed: maxed, cost: cost, afford: state.energy >= cost });
+  }
+  return out;
+}
+
+/* Тап по миру: иконки городов / кнопки панели / основание нового города.
+   Возвращает true, если тап «съеден» (не начинать перетаскивание маяка). */
+function cityHitTest(sx, sy) {
+  if (!state.colonized) return false;
+  if (state.activeCity >= 0 && state.cities[state.activeCity]) {
+    var btns = cityPanelButtons(state.cities[state.activeCity]);
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h) {
+        if (!b.maxed && b.afford) buyCityUpgrade(state.cities[state.activeCity], b.def.key);
+        return true;
+      }
+    }
+    state.activeCity = -1; /* тап мимо панели — закрываем и пропускаем дальше */
+    return false;
+  }
+  for (var c = 0; c < state.cities.length; c++) {
+    var r = cityIconRect(state.cities[c]);
+    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; return true; }
+  }
+  for (var s = 0; s < state.foundSites.length; s++) {
+    var fr = foundIconRect(state.foundSites[s]);
+    if (sx >= fr.x && sx <= fr.x + fr.w && sy >= fr.y && sy <= fr.y + fr.h) {
+      if (state.energy >= CITY_FOUND_COST) { state.energy -= CITY_FOUND_COST; foundCity(state.foundSites[s].x, state.foundSites[s].y); state.foundSites.splice(s, 1); updateHUD(); }
+      return true;
+    }
+  }
+  return false;
+}
 
 /* ═══════════════ CANVAS SETUP ═══════════════ */
 var dpr = 1;
@@ -1320,13 +1366,16 @@ function fireProjectile(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) {
 
 /* fire with multishot perk */
 function doFire(lhx,lhy,nx,ny,speed,charge,ammoIdx){
-  var ms=perkLvl('multishot');
-  var count=1+ms;
-  for(var i=0;i<count;i++){
-    var spread=(i-(count-1)/2)*0.12;
-    var cs=Math.cos(spread),sn=Math.sin(spread);
-    var dx2=nx*cs-ny*sn, dy2=nx*sn+ny*cs;
-    fireProjectile(lhx,lhy-0.6,dx2,dy2,speed*(1-Math.abs(spread)*0.15),charge,ammoIdx);
+  /* Базовый выстрел сразу */
+  fireProjectile(lhx,lhy-0.6,nx,ny,speed,charge,ammoIdx);
+  triggerCityFeed();
+  /* Гигаконденсаторы/города дают бонусные выстрелы В ТОМ ЖЕ направлении, с задержкой.
+     Сила конденсаторов усиливает заряд бонусных снарядов. */
+  var agg = cityAgg();
+  var extra = agg.extraShots;
+  var capBoost = 1 + 0.12 * agg.cap;
+  for(var k=0;k<extra;k++){
+    state.volley.push({ delay:0.13*(k+1), x:lhx, y:lhy-0.6, nx:nx, ny:ny, speed:speed*(1-0.03*k), charge:charge*capBoost, ammoIdx:ammoIdx });
   }
 }
 
@@ -1382,7 +1431,8 @@ function onContact(contact) {
 
   var vel = projBody.getLinearVelocity();
   var impactSpeed = vel.length();
-  var dmgMult = tier().dmgMult * (1 + state.restBonus); /* бонус отдыха повышает урон на всю волну */
+  var _agg = cityAgg();
+  var dmgMult = _agg.dmgMult * (1 + state.restBonus * _agg.restMult); /* электростанции + отдых×население */
   var damage = (impactSpeed * CFG.DMG_VEL_FACTOR + proj.charge * CFG.DMG_CHARGE_FACTOR) * dmgMult;
 
   /* crit perk */
@@ -1927,89 +1977,59 @@ function addLight(x, y, radius, color, life) {
   state.lights.push({ x:x, y:y, radius:radius, color:color, life:life, maxLife:life });
 }
 /*
- * Взрыв прожигает облака НАСКВОЗЬ (все слои) и оставляет постоянную дыру.
+ * Взрыв = ВОЛНА ДЕКОМПРЕССИИ: физически разгоняет клубы облаков наружу.
  *   maxRadius — базовый радиус (мировые юниты)
- *   power     — сила 0..1
- *   alt       — не используется (оставлено для совместимости вызовов)
- *
- * Даже слабый выстрел пробивает оба слоя (сила с полом), сильный — очень широко и
- * с кольцом ударной волны (эпично). Дыры пишутся в поле hole (не заживают, дрейфуют).
+ *   power     — сила 0..1 ; alt не используется.
+ * Дыра открывается движением клубов и сама затягивается, когда они приплывают
+ * обратно (никаких «нарисованных» дыр). Сильный взрыв бьёт шире и мощнее.
  */
 function addCrater(wx, wy, maxRadius, power, alt) {
   if (tw === 0) return;
   power = (power === undefined) ? 1 : (power < 0 ? 0 : power > 1 ? 1 : power);
   var sc = toScreen(wx, wy);
   var sx = sc[0], sy = sc[1];
-  var deckAlt = cloudLayers[0].altitude;
-
+  var blastR = maxRadius * scale * (1.5 + power * 1.4);
+  var strength = (140 + power * 340);          /* импульс, px/s */
   for (var li = 0; li < cloudLayers.length; li++) {
-    var L = cloudLayers[li];
-    if (!L.enabled) continue;
-    /* пол силы 0.7 → даже слабый выстрел ПРОБИВАЕТ этот слой; дальние чуть слабее */
-    var s = (0.7 + power * 0.55) * (1 - (L.altitude - deckAlt) * 0.12);
-    spawnLayerCrater(li, sx, sy, maxRadius * (0.8 + power * 0.7), s);
-  }
-
-  /* Эпичный сильный выстрел: кольцо осколочных дыр (ударная волна) во всех слоях */
-  if (power > 0.45) {
-    var ring = 2 + Math.floor(power * 4);
-    var off = maxRadius * scale * (0.9 + power * 0.8);
-    var a0 = Math.random() * TAU;
-    for (var k = 0; k < ring; k++) {
-      var a = a0 + (k / ring) * TAU;
-      var rx = sx + Math.cos(a) * off, ry = sy + Math.sin(a) * off;
-      for (var li2 = 0; li2 < cloudLayers.length; li2++) {
-        if (!cloudLayers[li2].enabled) continue;
-        spawnLayerCrater(li2, rx, ry, maxRadius * (0.3 + power * 0.4), 0.55 + power * 0.4);
+    var L = cloudLayers[li]; if (!L.enabled) continue;
+    var pf = L.puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k], dx = p.x - sx, dy = p.y - sy, d = Math.sqrt(dx * dx + dy * dy);
+      if (d < blastR && d > 0.5) {
+        var f = 1 - d / blastR; f = f * f;         /* ближе к центру — сильнее */
+        var push = strength * f;
+        p.vx += dx / d * push; p.vy += dy / d * push;
+        p.r *= (1 - 0.35 * f);                     /* сжатие клуба на фронте волны */
       }
     }
   }
+  /* видимое ударное кольцо декомпрессии */
+  craters.push({ x: sx, y: sy, r: blastR * 0.15, maxR: blastR, life: 0.45, maxLife: 0.45, power: power });
 }
 
-function spawnLayerCrater(layerIdx, sx, sy, maxRadius, strength) {
-  /* Кратер лишь «штампует» дыру в поле hole за короткий рост, затем удаляется —
-     сама дыра живёт в поле hole (дрейфует, почти не заживает). */
-  var rGrid = (maxRadius * scale) / CLOUD_CELL;
-  if (rGrid < 0.8) rGrid = 0.8;
-  craters.push({
-    layerIdx: layerIdx,
-    gx: sx / CLOUD_CELL,
-    gy: sy / CLOUD_CELL,
-    r: rGrid * 0.35,
-    maxR: rGrid,
-    growth: rGrid * 6.0,               /* быстрый «пробой» */
-    strength: strength > 1 ? 1 : strength
-  });
-}
+/* совместимость: старое имя больше не нужно, но пусть будет безопасным no-op */
+function spawnLayerCrater() {}
 
+/* Ударные кольца декомпрессии (визуал) */
 function updateCraters(dt) {
-  if (tw === 0) return;
   for (var ci = craters.length - 1; ci >= 0; ci--) {
     var c = craters[ci];
-    var layer = cloudLayers[c.layerIdx];
-    if (!layer || !layer.enabled) { craters.splice(ci, 1); continue; }
-
-    c.r = Math.min(c.r + c.growth * dt, c.maxR);
-    var rad = c.r;
-    var hole = layer.hole;
-    layer.holeActive = true;
-    var rC = Math.ceil(rad) + 1;
-    var cxI = Math.round(c.gx), cyI = Math.round(c.gy);
-    for (var dj = -rC; dj <= rC; dj++) {
-      var j = cyI + dj; if (j < 0 || j >= gh) continue;
-      for (var di = -rC; di <= rC; di++) {
-        var i = cxI + di; if (i < 0 || i >= gw) continue;
-        var dx = i - c.gx, dy = j - c.gy, d = Math.sqrt(dx * dx + dy * dy);
-        if (d < rad) {
-          var f = 1 - d / rad; f = f * (2 - f);      /* мягкий, но глубокий профиль */
-          var val = c.strength * f;
-          var idx = j * gw + i;
-          if (val > hole[idx]) hole[idx] = val;        /* дыра пробивает облако (макс) */
-        }
-      }
-    }
-    if (c.r >= c.maxR) craters.splice(ci, 1);          /* штамп завершён — дыра остаётся в hole */
+    c.r += (c.maxR - c.r) * 6 * dt;
+    c.life -= dt;
+    if (c.life <= 0) craters.splice(ci, 1);
   }
+}
+function drawCloudShocks() {
+  if (craters.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (var i = 0; i < craters.length; i++) {
+    var c = craters[i], a = Math.max(0, c.life / c.maxLife);
+    ctx.strokeStyle = 'rgba(200,225,255,' + (a * 0.5) + ')';
+    ctx.lineWidth = 2 + c.power * 3;
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
 }
 function updateLights(dt) {
   for (var i = state.lights.length - 1; i >= 0; i--) {
@@ -2103,6 +2123,8 @@ function initInput() {
   function onDown(e) {
     if (state.gameOver) return;
     var p = getPos(e);
+    /* Сначала — тап по иконкам/панели прокачки городов */
+    if (cityHitTest(p.x * scale, p.y * scale)) { e.preventDefault && e.preventDefault(); return; }
     var lh = state.lighthouse;
     var dx = p.x - lh.x, dy = p.y - lh.y;
     if (dx*dx + dy*dy < 3.5*3.5) {
@@ -2145,7 +2167,7 @@ function initInput() {
         state.charge = 0;
         return;
       }
-      var maxVel = 18 + state.colonyTier * 2;
+      var maxVel = 18 + cityAgg().plant;
       var speed = Math.min(dist * CFG.VEL_FACTOR, maxVel);
       var nx = dx / dist, ny = dy / dist;
       doFire(lh.x, lh.y, nx, ny, speed, state.charge, state.selectedAmmo);
@@ -2217,8 +2239,9 @@ function update(dt) {
   /* Charge while dragging — colony chargeMult + fast_charge perk */
   var maxCharge = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
   if (state.dragging) {
-    var chgSpd = CFG.CHARGE_SPEED * 0.5 * tier().chargeMult * (1 + perkLvl('fast_charge') * 0.3);
-    chgSpd *= (1 + state.restBonus); /* бонус отдыха ускоряет зарядку на всю волну */
+    var _cagg = cityAgg();
+    var chgSpd = CFG.CHARGE_SPEED * 0.5 * _cagg.chargeMult * (1 + perkLvl('fast_charge') * 0.3);
+    chgSpd *= (1 + state.restBonus * _cagg.restMult); /* электростанции + отдых×население */
     state.charge = Math.min(state.charge + dt * chgSpd, maxCharge);
   }
 
@@ -2595,6 +2618,8 @@ function update(dt) {
   updatePlateDebris(dt);
   updateShrapnel(dt);
   updateBurning(dt);
+  updateVolley(dt);
+  updateCities(dt);
 
   /* === PHYSICS STEP with deferred body management === */
   /* First: destroy queued bodies BEFORE step */
@@ -2648,6 +2673,7 @@ function render() {
   /* Линия прицела ПОД облаками */
   if (state.dragging) drawAimLine();
   drawCloudLayer();        /* облака поверх врагов + луч перекрашивает в красный */
+  drawCloudShocks();       /* кольца декомпрессии от взрывов */
   /* Маяк НАД облаками когда lhAbove >= 0.5 */
   if (state.lhAbove >= 0.5) {
     ctx.save();
@@ -2667,6 +2693,9 @@ function render() {
 
   /* ── Слой 1 облаков поверх всего (включая UI) ── */
   drawCloudLayer1();
+
+  /* ── UI прокачки городов ПОВЕРХ облаков ── */
+  drawCityUI();
 
   /* ── Круг-подсказка туториала ПОВЕРХ всех облаков ── */
   if (_tut.state === 'hold' || (_tut.state === 'active' && _tutDragPct() < 0.2)) {
@@ -2809,6 +2838,7 @@ function createShotCrater(worldX, worldY, charge) {
     /* Первый кратер — ПОД городом (на _surfCtx) */
     drawCraterOnCtx(_surfCtx, sx, sy, cr);
     state.firstColony = true;
+    state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0 }, feed:0, flicker:0, born:0 });
     state.clock = 0;             /* игровые часы стартуют с основания колонии */
     state.restStartClock = 0;
     var tutBonus = tutOnFire();
@@ -2823,6 +2853,20 @@ function createShotCrater(worldX, worldY, charge) {
   } else {
     /* Последующие кратеры — ПОВЕРХ города (разрушение) */
     destructionCraters.push({ x: sx, y: sy, r: cr });
+
+    /* Достаточно крупный кратер вдали от городов → место под НОВЫЙ город */
+    if (charge >= 0.4 && cr >= 18) {
+      var farOk = true;
+      for (var ci = 0; ci < state.cities.length; ci++) {
+        var cc = state.cities[ci], ddx = cc.x - sx, ddy = cc.y - sy;
+        if (ddx * ddx + ddy * ddy < 95 * 95) { farOk = false; break; }
+      }
+      for (var fi2 = 0; farOk && fi2 < state.foundSites.length; fi2++) {
+        var fs = state.foundSites[fi2], fdx = fs.x - sx, fdy = fs.y - sy;
+        if (fdx * fdx + fdy * fdy < 70 * 70) { farOk = false; break; }
+      }
+      if (farOk && state.foundSites.length < 4) state.foundSites.push({ x: sx, y: sy });
+    }
 
     /* Остановить строительство города */
     cityQueue.length = 0;
@@ -3118,6 +3162,118 @@ function updateCityGrowth(dt) {
   for (var ci = 0; ci < completed.length; ci++) spawnCity(completed[ci]);
 }
 
+/* Бегущий ток по проводу от города к башне (как плазма, которой стреляем) */
+function drawWireCurrent(ax, ay, bx, by, color, intensity, phase) {
+  var segLen = Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+  var dots = Math.max(2, Math.floor(segLen / 16));
+  ctx.fillStyle = color;
+  for (var k = 0; k < dots; k++) {
+    var t = ((k / dots) + phase) % 1;
+    var x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+    var rr2 = 1.6 + intensity * 1.6;
+    ctx.beginPath(); ctx.arc(x, y, rr2, 0, TAU); ctx.fill();
+  }
+}
+
+/* Города в мире: электростанции, провода с током, мерцание света (под облаками) */
+function drawCityWorld() {
+  if (!state.colonized || !state.cities.length) return;
+  var lh = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var ammoColor = getActiveAmmoColor();
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i];
+    var plants = plantPositions(c);
+    var flow = Math.max(c.feed, state.dragging ? 0.4 : 0);
+    /* провода: город → башня и станции → башня/город */
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,160,180,0.30)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(lh[0], lh[1]); ctx.stroke();
+    for (var k = 0; k < plants.length; k++) {
+      ctx.beginPath(); ctx.moveTo(plants[k].x, plants[k].y); ctx.lineTo(c.x, c.y);
+      ctx.moveTo(plants[k].x, plants[k].y); ctx.lineTo(lh[0], lh[1]); ctx.stroke();
+    }
+    ctx.restore();
+    /* ток по проводам во время зарядки/выстрела */
+    if (flow > 0.02) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = ammoColor; ctx.shadowBlur = 6;
+      drawWireCurrent(c.x, c.y, lh[0], lh[1], ammoColor, flow, (state.time * 1.3) % 1);
+      for (var k2 = 0; k2 < plants.length; k2++) drawWireCurrent(plants[k2].x, plants[k2].y, lh[0], lh[1], ammoColor, flow, (state.time * 1.6 + k2 * 0.2) % 1);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+    /* электростанции */
+    for (var k3 = 0; k3 < plants.length; k3++) {
+      var pp = plants[k3];
+      ctx.save(); ctx.translate(pp.x, pp.y);
+      ctx.fillStyle = '#0a1a22'; ctx.strokeStyle = '#37e0ff'; ctx.lineWidth = 1.5;
+      ctx.fillRect(-6, -6, 12, 12); ctx.strokeRect(-6, -6, 12, 12);
+      ctx.fillStyle = hexToRgba('#ffd600', 0.7 + 0.3 * Math.sin(state.time * 6 + k3));
+      ctx.fillRect(-2.5, -2.5, 5, 5);
+      ctx.restore();
+    }
+    /* мерцание света в городе (гаснет частями) */
+    if (c.flicker > 0.02) {
+      for (var f = 0; f < 3; f++) {
+        var fa = Math.random() * TAU, fd = Math.random() * c.r;
+        ctx.fillStyle = 'rgba(0,0,0,' + (c.flicker * 0.5) + ')';
+        ctx.fillRect(c.x + Math.cos(fa) * fd - 5, c.y + Math.sin(fa) * fd - 5, 10, 10);
+      }
+    }
+  }
+}
+
+/* UI городов поверх облаков: иконки, места под новый город, панель прокачки */
+function drawCityUI() {
+  if (!state.colonized) return;
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  /* места под новый город */
+  for (var s = 0; s < state.foundSites.length; s++) {
+    var st = state.foundSites[s], r = foundIconRect(st);
+    var can = state.energy >= CITY_FOUND_COST;
+    ctx.fillStyle = can ? 'rgba(0,40,20,0.85)' : 'rgba(30,30,30,0.8)';
+    ctx.strokeStyle = can ? '#00e676' : '#556'; ctx.lineWidth = 2;
+    ctx.fillRect(r.x, r.y, r.w, r.h); ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = can ? '#00e676' : '#889'; ctx.font = '700 10px "Chakra Petch"';
+    ctx.fillText('+ ГОРОД', st.x, r.y + 8);
+    ctx.fillText('⚡' + CITY_FOUND_COST, st.x, r.y + 18);
+  }
+  /* иконки прокачки городов */
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i], ir = cityIconRect(c), open = state.activeCity === i;
+    ctx.fillStyle = open ? 'rgba(0,60,80,0.95)' : 'rgba(6,20,28,0.9)';
+    ctx.strokeStyle = '#37e0ff'; ctx.lineWidth = 2;
+    ctx.fillRect(ir.x, ir.y, ir.w, ir.h); ctx.strokeRect(ir.x, ir.y, ir.w, ir.h);
+    ctx.fillStyle = '#37e0ff'; ctx.font = '15px sans-serif';
+    ctx.fillText('⚙', c.x, ir.y + 14);
+  }
+  /* панель активного города */
+  if (state.activeCity >= 0 && state.cities[state.activeCity]) {
+    var btns = cityPanelButtons(state.cities[state.activeCity]);
+    for (var b = 0; b < btns.length; b++) {
+      var bt = btns[b];
+      ctx.fillStyle = 'rgba(5,12,20,0.95)';
+      ctx.strokeStyle = bt.maxed ? '#00e5ff' : (bt.afford ? '#ffab00' : '#555');
+      ctx.lineWidth = 2;
+      ctx.fillRect(bt.x, bt.y, bt.w, bt.h); ctx.strokeRect(bt.x, bt.y, bt.w, bt.h);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#e8eaed'; ctx.font = '700 11px "Chakra Petch"';
+      ctx.fillText(bt.def.icon + ' ' + bt.def.name, bt.x + 8, bt.y + 11);
+      var dt2 = ''; for (var d = 0; d < bt.def.max; d++) dt2 += d < bt.level ? '●' : '○';
+      ctx.fillStyle = '#37e0ff'; ctx.font = '9px "Chakra Petch"';
+      ctx.fillText(dt2, bt.x + 8, bt.y + 22);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = bt.maxed ? '#00e5ff' : (bt.afford ? '#ffab00' : '#888');
+      ctx.font = '700 11px "Chakra Petch"';
+      ctx.fillText(bt.maxed ? 'МАКС' : ('⚡' + bt.cost), bt.x + bt.w - 8, bt.y + 15);
+    }
+    ctx.textAlign = 'center';
+  }
+  ctx.restore();
+}
+
 function drawBackground() {
   /* Статичная поверхность (земля) — город начинается из кратеров выстрелов */
   if (!_surfCvs) {
@@ -3157,6 +3313,9 @@ function drawBackground() {
 
   /* Динамическое освещение смога от взрывов и снарядов */
   drawSmogLighting();
+
+  /* Электростанции, провода с током, мерцание — часть мира (под облаками) */
+  drawCityWorld();
 }
 
 /* Облака рисуются отдельно ПОВЕРХ врагов — см. render() */
@@ -3165,7 +3324,7 @@ function drawCloudLayer() {
 }
 
 function drawCloudLayer1() {
-  renderCloudsToCtx(ctx, W, H, [1, 2]); /* верхний слой + тонкий третий слой — поверх всего */
+  renderCloudsToCtx(ctx, W, H, [1]); /* верхний слой клубов — поверх всего */
 }
 
 function drawSmogLighting() {
@@ -3461,7 +3620,7 @@ function drawAimLine() {
 
   /* Вычисляем скорость снаряда как при выстреле */
   var dragMax = state.waveActive ? 14 : CFG.DRAG_MAX;
-  var maxVel = 18 + state.colonyTier * 2;
+  var maxVel = 18 + cityAgg().plant;
   var speed = Math.min(dist * CFG.VEL_FACTOR, maxVel);
 
   /* Damping как при выстреле */
@@ -4234,11 +4393,12 @@ function showWaveText(text) {
 function buildAmmoBar() {
   var bar = document.getElementById('ammo-bar');
   bar.innerHTML = '';
+  var sciLvl = cityAgg().sci;
   AMMO.forEach(function(a, i) {
-    var unlocked = state.colonyTier >= a.tierReq;
+    var unlocked = sciLvl >= a.tierReq;
     var btn = document.createElement('div');
     btn.className = 'ammo-btn' + (i === state.selectedAmmo ? ' active' : '') + (!unlocked ? ' locked' : '');
-    btn.title = a.name + (unlocked ? '' : ' (нужен: ' + COLONY_TIERS[a.tierReq].name + ')');
+    btn.title = a.name + (unlocked ? '' : ' (наука ур.' + a.tierReq + ')');
 
     /* Создаём canvas превью — плазменные молнии */
     var previewCvs = document.createElement('canvas');
@@ -4406,6 +4566,7 @@ function resetGame() {
   _surfCvs = null;
   cityQueue = [];
   cityFrozen = [];
+  cityCraters = [];
   destructionCraters = [];
   explosionBolts = [];
   cityTier = -1;
