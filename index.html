@@ -504,67 +504,49 @@ var state;
 var deferredBodies = [];   /* { action:'create', args:{...} } */
 var deferredDestroy = [];  /* body references to destroy */
 
-/* ═══════════════ 2D VAPOR CLOUDS — advected density field (v3) ═══════════════ */
+/* ═══════════════ PARTICLE CLOUDS — metaball puffs (v4) ═══════════════ */
 /*
- * Облака ведут себя как пар по формуле, а не как «едущая текстура».
- *
- * Модель — облегчённая 2D-гидродинамика дыма:
- *   • у каждого слоя есть поле плотности den на грубой сетке;
- *   • скорость = дрейф (ветер слоя) + curl бесдивергентного шумового потенциала
- *     ψ  →  v = (∂ψ/∂y, −∂ψ/∂x);  curl не сжимает/растягивает → нет полос и «резинки»;
- *   • плотность переносится semi-Lagrangian-адвекцией (метод Стама, безусловно
- *     устойчива), поэтому клубится, сворачивается и складывается как настоящий пар;
- *   • слабая релаксация к «подпитке» (движущийся с ветром fbm) не даёт полю
- *     опустеть и добавляет рождение/растворение клубов;
- *   • слои дрейфуют в РАЗНЫЕ стороны (аркадный параллакс);
- *   • взрывы пробивают ВСЕ слои и оставляют стойкую дыру (поле hole): она дрейфует
- *     с облаками и почти не заживает; маяк лишь слегка разгоняет плотность вокруг себя.
- *
- * Рендер идёт в уменьшенный оффскрин и растягивается билинейно (дёшево).
+ * Облака — это МНОЖЕСТВО мягких клубов (puffs), а не сетка с альфой.
+ *   • каждый клуб плывёт по ветру + curl-шуму (парение) и тянется к плотности
+ *     соседей (кучкуется); клубы въезжают с одного края и уезжают за другой —
+ *     облака «появляются» движением, а не проявлением прозрачности;
+ *   • взрыв физически РАЗГОНЯЕТ клубы наружу — настоящая волна декомпрессии,
+ *     дыра открывается и сама затягивается, когда клубы приплывают обратно;
+ *   • рендер — метаболы: клубы штампуются в поле плотности, поле режется по
+ *     порогу → ЧЁТКИЕ облака без длинного альфа-градиента (нет «помутнения»).
+ * planck (Box2D-порт) частиц не имеет — это своя лёгкая система клубов.
  */
-var CLOUD_CELL = 12;      /* px на ячейку симуляции (экранные) */
-var gw = 0, gh = 0;       /* размеры сетки */
-var tw = 0;               /* флаг готовности (ненулевой = сетка создана) */
-var cloudDownscale = 2;   /* уменьшение оффскрина рендера (nearest-upscale → пиксельность) */
+var CLOUD_CELL = 9;        /* px на ячейку поля метаболов */
+var fw = 0, fh = 0;        /* размеры поля */
+var tw = 0;                /* флаг готовности */
+var cloudDownscale = 2;    /* уменьшение оффскрина рендера (nearest → пиксельность) */
 var _simTime = 0;
-var _psiGrid = null;      /* потенциал скорости (переиспользуемый буфер) */
-var HOLE_DECAY = 0.9994;  /* затухание пробитых дыр за шаг (≈0 → почти не заживают) */
-/* Детализация/зерно рендера — грубая симуляция + мелкий шум = чёткая гранулярность */
-var DETAIL_AMP = 0.30;    /* сила мелкой структуры внутри облаков */
-var DETAIL_FREQ = 0.16;   /* частота зерна (больше → мельче) */
-var DITHER_AMP = 0.07;    /* упорядоченный дизеринг краёв (пиксельность) */
-var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5]; /* 4×4 Bayer /16 */
+var CLOUD_T = 0.46;        /* порог «есть облако» */
+var DETAIL_AMP = 0.10;     /* лёгкое зерно внутри облаков */
+var DETAIL_FREQ = 0.16;
+var DITHER_AMP = 0.10;     /* дизеринг кромки (гранулярность вместо резкого пикселя) */
+var _BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
 
-/* drift/curl/tspd = движение облаков; curl = кучерявость (завихрения) */
+/* Слои клубов (1–2, без альфа-пелены). deck прячет врагов, high — тонкий сверху. */
 var cloudLayers = [
-  { name:'deck', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:false,
-    driftX: 3,    driftY: 7.5,  curl: 68, pf:0.100, tspd:0.165, sf:0.0090, relax:0.028,
-    alpha:0.74, altitude:0.15 },
-  { name:'high', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:false,
-    driftX:-4.5,  driftY:-5.25, curl: 55, pf:0.110, tspd:0.150, sf:0.0100, relax:0.026,
-    alpha:0.80, altitude:0.85 },
-  { name:'veil', den:null, tmp:null, hole:null, holeTmp:null, holeActive:false, enabled:true, cheap:true,
-    driftX: 6,    driftY: 12,   curl: 45, pf:0.140, tspd:0.225, sf:0.0130, relax:0.032,
-    alpha:0.34, altitude:0.55 }
+  { name:'deck', puffs:[], field:null, count:340, rMin:26, rMax:56, dx: 6, dy: 3.5, curl:26, dseek:6, alpha:1.00, enabled:true },
+  { name:'high', puffs:[], field:null, count:150, rMin:18, rMax:40, dx:-5, dy:-2.5, curl:22, dseek:5, alpha:0.90, enabled:true }
 ];
-var craters = []; /* {layerIdx, gx, gy, r, maxR, growth, strength} — выеденные дыры */
+var craters = []; /* ударные кольца декомпрессии {x,y,r,maxR,life,color} */
 
-/* ── Быстрый целочисленный хеш (без Math.sin — дёшево для сетки каждый кадр) ── */
+/* ── Быстрый хеш + шум (для curl-парения и зерна) ── */
 function _hash(ix, iy) {
   var h = Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  h ^= h >>> 16;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
   return (h >>> 0) / 4294967295;
 }
 function _smoothNoise(x, y) {
   var ix = Math.floor(x), iy = Math.floor(y);
   var fx = x - ix, fy = y - iy;
-  fx = fx * fx * (3 - 2 * fx);
-  fy = fy * fy * (3 - 2 * fy);
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
   var a = _hash(ix, iy), b = _hash(ix + 1, iy), c = _hash(ix, iy + 1), d = _hash(ix + 1, iy + 1);
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
-/* Анимированный 3D-ish шум: две плоскости по Z с лерпом (плавная мутация во времени) */
 function _noise3(x, y, z) {
   var z0 = Math.floor(z), fz = z - z0; fz = fz * fz * (3 - 2 * fz);
   var a = _smoothNoise(x + z0 * 19.3, y - z0 * 11.7);
@@ -575,205 +557,157 @@ function _fbm3(x, y, z) {
   return _noise3(x, y, z) * 0.65 + _noise3(x * 2.17 + 9.2, y * 2.17 - 4.3, z * 1.7 + 2.1) * 0.35;
 }
 
-/* ── Билинейная выборка сетки (с клампом краёв) ── */
 function sampleGrid(g, fx, fy) {
-  if (fx < 0) fx = 0; else if (fx > gw - 1.001) fx = gw - 1.001;
-  if (fy < 0) fy = 0; else if (fy > gh - 1.001) fy = gh - 1.001;
-  var ix = fx | 0, iy = fy | 0;
-  var tx = fx - ix, ty = fy - iy;
-  var i = iy * gw + ix;
-  var a = g[i], b = g[i + 1], c = g[i + gw], d = g[i + gw + 1];
+  if (fx < 0) fx = 0; else if (fx > fw - 1.001) fx = fw - 1.001;
+  if (fy < 0) fy = 0; else if (fy > fh - 1.001) fy = fh - 1.001;
+  var ix = fx | 0, iy = fy | 0, tx = fx - ix, ty = fy - iy, i = iy * fw + ix;
+  var a = g[i], b = g[i + 1], c = g[i + fw], d = g[i + fw + 1];
   return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
 }
 
-/* «Подпитка» — движущееся с ветром слоя поле fbm (клубы рождаются/тают) */
-function supplyAt(layer, i, j) {
-  var sxp = i * CLOUD_CELL - layer.driftX * _simTime;
-  var syp = j * CLOUD_CELL - layer.driftY * _simTime;
-  var f = layer.sf;
-  var n = _fbm3(sxp * f + layer.seed0, syp * f, _simTime * 0.05 + layer.seed0);
-  n = (n - 0.5) * 1.55 + cloudSupplyBias; /* смещение = густота (плавно растёт к ночи) */
-  return n < 0 ? 0 : n;          /* плотность неотрицательна (для корректного выедания дыр) */
-}
+var cloudDarkMult = 1.0;   /* 1.0 = день, ~0.45 = ночь */
+var cloudSupplyBias = 0.5; /* густота: масштабирует радиус клубов */
 
-/* ── Инициализация полей ── */
+function _spawnPuff(layer, seeded) {
+  return {
+    x: Math.random() * W, y: Math.random() * H,
+    r0: layer.rMin + Math.random() * (layer.rMax - layer.rMin),
+    r: 0, vx: 0, vy: 0
+  };
+}
 function initCloudMap(width, height) {
-  gw = Math.max(4, Math.ceil(width / CLOUD_CELL) + 1);
-  gh = Math.max(4, Math.ceil(height / CLOUD_CELL) + 1);
-  tw = gw; /* флаг готовности */
-  _simTime = 0;
-  craters = [];
-  _psiGrid = new Float32Array(gw * gh);
+  fw = Math.max(4, Math.ceil(width / CLOUD_CELL) + 1);
+  fh = Math.max(4, Math.ceil(height / CLOUD_CELL) + 1);
+  tw = fw; _simTime = 0; craters = [];
   for (var li = 0; li < cloudLayers.length; li++) {
     var L = cloudLayers[li];
-    L.seed0 = (li + 1) * 137.13;
-    L.den = new Float32Array(gw * gh);
-    L.tmp = new Float32Array(gw * gh);
-    L.hole = new Float32Array(gw * gh);    /* поле пробитых дыр (вычитается из плотности) */
-    L.holeTmp = new Float32Array(gw * gh);
-    L.holeActive = false;
-    /* стартовое заполнение — сразу облачно */
-    for (var j = 0; j < gh; j++) {
-      for (var i = 0; i < gw; i++) {
-        L.den[j * gw + i] = supplyAt(L, i, j);
+    L.field = new Float32Array(fw * fh);
+    L.puffs = [];
+    for (var k = 0; k < L.count; k++) { var p = _spawnPuff(L); p.r = p.r0; L.puffs.push(p); }
+  }
+  stampFields();
+}
+
+/* Штамп всех клубов слоя в его поле плотности (метаболы) */
+function stampFields() {
+  for (var li = 0; li < cloudLayers.length; li++) {
+    var L = cloudLayers[li]; if (!L.enabled) continue;
+    var fld = L.field; fld.fill(0);
+    var pf = L.puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k];
+      var rr = p.r * (0.7 + cloudSupplyBias * 0.6); /* густота меняет размер, а не альфу */
+      var cxc = p.x / CLOUD_CELL, cyc = p.y / CLOUD_CELL, rc = rr / CLOUD_CELL;
+      var i0 = Math.floor(cxc - rc), i1 = Math.floor(cxc + rc);
+      var j0 = Math.floor(cyc - rc), j1 = Math.floor(cyc + rc);
+      if (i0 < 0) i0 = 0; if (j0 < 0) j0 = 0;
+      if (i1 > fw - 1) i1 = fw - 1; if (j1 > fh - 1) j1 = fh - 1;
+      var inv = 1 / (rc || 1);
+      for (var j = j0; j <= j1; j++) {
+        var dy = j - cyc, base = j * fw;
+        for (var i = i0; i <= i1; i++) {
+          var dx = i - cxc, d = Math.sqrt(dx * dx + dy * dy) * inv;
+          if (d < 1) { var w = 1 - d; fld[base + i] += w * w; }
+        }
       }
     }
   }
 }
 
-/* ── Шаг симуляции всех слоёв (вызывается каждый кадр) ── */
+/* Шаг: движение клубов (ветер + curl-парение + тяга к плотности + инерция взрыва) */
 function scrollClouds(dt) {
   if (tw === 0) return;
-  if (dt > 0.05) dt = 0.05; /* защита от больших скачков */
+  if (dt > 0.05) dt = 0.05;
   _simTime += dt;
-  var invCell = 1 / CLOUD_CELL;
+  var tt = _simTime * 0.12, e = 1.6, s = 0.010;
+  var pad = 60;
   for (var li = 0; li < cloudLayers.length; li++) {
-    var L = cloudLayers[li];
-    if (!L.enabled) continue;
-    var den = L.den, tmp = L.tmp, psi = _psiGrid;
-    var pf = L.pf, tsp = _simTime * L.tspd + L.seed0, curl = L.curl, relax = L.relax;
-    var advHole = L.holeActive, hole = L.hole, holeTmp = L.holeTmp, maxHole = 0;
-
-    /* 1) Потенциал скорости ψ на сетке (анимированный) */
-    for (var j = 0; j < gh; j++) {
-      var rowo = j * gw;
-      for (var i = 0; i < gw; i++) {
-        psi[rowo + i] = _fbm3(i * pf + L.seed0, j * pf, tsp);
-      }
+    var L = cloudLayers[li]; if (!L.enabled) continue;
+    var fld = L.field, pf = L.puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k];
+      /* curl бездивергентного шума → парение/завихрение */
+      var n1 = _fbm3(p.x * s, (p.y + e) * s, tt), n2 = _fbm3(p.x * s, (p.y - e) * s, tt);
+      var n3 = _fbm3((p.x + e) * s, p.y * s, tt), n4 = _fbm3((p.x - e) * s, p.y * s, tt);
+      var curlx = (n1 - n2), curly = -(n3 - n4);
+      /* тяга к более плотным соседям (кучкование) — градиент поля прошлого кадра */
+      var gx = p.x / CLOUD_CELL, gy = p.y / CLOUD_CELL;
+      var dseekx = sampleGrid(fld, gx + 1, gy) - sampleGrid(fld, gx - 1, gy);
+      var dseeky = sampleGrid(fld, gx, gy + 1) - sampleGrid(fld, gx, gy - 1);
+      /* целевая скорость */
+      var tvx = L.dx + curlx * L.curl + dseekx * L.dseek;
+      var tvy = L.dy + curly * L.curl + dseeky * L.dseek;
+      p.vx += (tvx - p.vx) * 3.5 * dt;
+      p.vy += (tvy - p.vy) * 3.5 * dt;
+      p.vx *= 0.985; p.vy *= 0.985; /* инерция взрыва гаснет */
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      /* въезд с краёв: заезжает за край — появляется с противоположного */
+      if (p.x < -pad) p.x += W + pad * 2; else if (p.x > W + pad) p.x -= W + pad * 2;
+      if (p.y < -pad) p.y += H + pad * 2; else if (p.y > H + pad) p.y -= H + pad * 2;
+      /* восстановление радиуса после сжатия взрывом */
+      if (p.r < p.r0) p.r += (p.r0 - p.r) * 1.2 * dt;
     }
-
-    /* 2) Адвекция плотности по v = drift + curl(ψ), затем релаксация к подпитке.
-       Поле дыр адвектируется тем же течением (дыры дрейфуют с облаками) и почти
-       не затухает → выстрелы не «заживают». */
-    for (var jj = 0; jj < gh; jj++) {
-      var jp1 = jj + 1; if (jp1 > gh - 1) jp1 = gh - 1;
-      var jm1 = jj - 1; if (jm1 < 0) jm1 = 0;
-      var ro = jj * gw;
-      for (var ii = 0; ii < gw; ii++) {
-        var ip1 = ii + 1; if (ip1 > gw - 1) ip1 = gw - 1;
-        var im1 = ii - 1; if (im1 < 0) im1 = 0;
-        /* v = (∂ψ/∂y, −∂ψ/∂x) * curl + дрейф  (бездивергентно → без растяжения) */
-        var vx = (psi[jp1 * gw + ii] - psi[jm1 * gw + ii]) * curl + L.driftX;
-        var vy = -(psi[ro + ip1] - psi[ro + im1]) * curl + L.driftY;
-        /* semi-Lagrangian: откуда пришла плотность */
-        var fx = ii - vx * dt * invCell;
-        var fy = jj - vy * dt * invCell;
-        var adv = sampleGrid(den, fx, fy);
-        var sup = supplyAt(L, ii, jj);
-        tmp[ro + ii] = adv + (sup - adv) * relax;
-        if (advHole) {
-          var hv = sampleGrid(hole, fx, fy) * HOLE_DECAY;
-          holeTmp[ro + ii] = hv;
-          if (hv > maxHole) maxHole = hv;
-        }
-      }
-    }
-    /* swap */
-    L.den = tmp; L.tmp = den;
-    if (advHole) { L.hole = holeTmp; L.holeTmp = hole; if (maxHole < 0.02) L.holeActive = false; }
   }
+  stampFields();
 }
 
-/* ── Плотность нижнего слоя в экранной точке — для смог-освещения ── */
+/* Плотность нижнего слоя в экранной точке (для смог-освещения) */
 function getHeightAt(screenX, screenY) {
   if (tw === 0) return 0.4;
-  var L = cloudLayers[0];
-  var gx = screenX / CLOUD_CELL, gy = screenY / CLOUD_CELL;
-  var v = sampleGrid(L.den, gx, gy);
-  if (L.holeActive) v -= sampleGrid(L.hole, gx, gy);
-  return v < 0 ? 0 : v;
+  return sampleGrid(cloudLayers[0].field, screenX / CLOUD_CELL, screenY / CLOUD_CELL);
 }
 
-/* ── Маяк выедает плотность вокруг себя (в каждом слое) ── */
+/* Маяк слегка расталкивает клубы вокруг себя */
 function repelCloudsFromLighthouse() {
   if (tw === 0 || !state || !state.colonized || !state.waveActive) return;
-  var lh = state.lighthouse;
-  var sc = toScreen(lh.x, lh.y);
-  var gx = sc[0] / CLOUD_CELL, gy = sc[1] / CLOUD_CELL;
-  var rad = (0.7 * lhScale) / CLOUD_CELL + 0.6;
-  var rC = Math.ceil(rad) + 1;
-  var cxI = Math.round(gx), cyI = Math.round(gy);
+  var sc = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var rad = 0.7 * lhScale + 14;
   for (var li = 0; li < cloudLayers.length; li++) {
-    var L = cloudLayers[li];
-    if (!L.enabled) continue;
-    for (var dj = -rC; dj <= rC; dj++) {
-      var j = cyI + dj; if (j < 0 || j >= gh) continue;
-      for (var di = -rC; di <= rC; di++) {
-        var i = cxI + di; if (i < 0 || i >= gw) continue;
-        var dx = i - gx, dy = j - gy, d = Math.sqrt(dx * dx + dy * dy);
-        if (d < rad) {
-          var f = 1 - d / rad; f *= f;
-          var idx = j * gw + i;
-          L.den[idx] -= L.den[idx] * 0.5 * f;
-        }
-      }
+    var pf = cloudLayers[li].puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k], dx = p.x - sc[0], dy = p.y - sc[1], d = Math.sqrt(dx * dx + dy * dy);
+      if (d < rad && d > 1) { var f = (1 - d / rad) * 60; p.vx += dx / d * f * 0.016; p.vy += dy / d * f * 0.016; }
     }
   }
 }
 
-/* ── Палитра плотности → RGB (упаковано в int) ── */
-var cloudDarkMult = 1.0;      /* 1.0 = день, ~0.45 = ночь (плавно) */
-var cloudSupplyBias = 0.50;   /* густота облаков (плавно растёт к ночи) */
+/* ── Палитра плотности → RGB ── */
 function heightToColor(h) {
-  var contrast = (h - 0.5) * 2.5 + 0.5;
+  var contrast = (h - 0.5) * 2.2 + 0.5;
   if (contrast < 0) contrast = 0; else if (contrast > 1) contrast = 1;
   var r, g, b;
-  if (contrast < 0.3) {
-    var t = contrast / 0.3;
-    r = 2 + t * 3; g = 2 + t * 4; b = 4 + t * 6;
-  } else if (contrast < 0.45) {
-    var t2 = (contrast - 0.3) / 0.15;
-    r = 5 + t2 * 15; g = 6 + t2 * 18; b = 10 + t2 * 20;
-  } else if (contrast < 0.6) {
-    var t3 = (contrast - 0.45) / 0.15;
-    r = 20 + t3 * 25; g = 24 + t3 * 28; b = 30 + t3 * 30;
-  } else if (contrast < 0.75) {
-    var t4 = (contrast - 0.6) / 0.15;
-    r = 45 + t4 * 35; g = 52 + t4 * 40; b = 60 + t4 * 40;
-  } else {
-    var t5 = (contrast - 0.75) / 0.25;
-    r = 80 + t5 * 50; g = 92 + t5 * 55; b = 100 + t5 * 55;
-  }
+  if (contrast < 0.3) { var t = contrast / 0.3; r = 8 + t * 12; g = 10 + t * 14; b = 14 + t * 18; }
+  else if (contrast < 0.6) { var t3 = (contrast - 0.3) / 0.3; r = 20 + t3 * 40; g = 24 + t3 * 44; b = 32 + t3 * 46; }
+  else { var t5 = (contrast - 0.6) / 0.4; r = 60 + t5 * 70; g = 68 + t5 * 76; b = 78 + t5 * 74; }
   r *= cloudDarkMult; g *= cloudDarkMult; b *= cloudDarkMult;
   return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
 }
 
-/* ── Рендер облаков в уменьшенный offscreen → drawImage с интерполяцией ── */
+/* ── Рендер: поле метаболов → чёткие облака в уменьшенный offscreen ── */
 var _cloudCvs = null, _cloudCtx2 = null, _cloudImgData = null, _cloudOW = 0, _cloudOH = 0;
 function renderCloudsToCtx(destCtx, w, h, layerFilter) {
   layerFilter = layerFilter || null;
   if (tw === 0) return;
-
   var ds = cloudDownscale;
   var ow = Math.ceil(w / ds), oh = Math.ceil(h / ds);
   if (!_cloudCvs) { _cloudCvs = document.createElement('canvas'); _cloudCtx2 = _cloudCvs.getContext('2d'); }
-  if (_cloudOW !== ow || _cloudOH !== oh) {
-    _cloudCvs.width = ow; _cloudCvs.height = oh;
-    _cloudOW = ow; _cloudOH = oh;
-    _cloudImgData = _cloudCtx2.createImageData(ow, oh);
-  }
+  if (_cloudOW !== ow || _cloudOH !== oh) { _cloudCvs.width = ow; _cloudCvs.height = oh; _cloudOW = ow; _cloudOH = oh; _cloudImgData = _cloudCtx2.createImageData(ow, oh); }
   var data = _cloudImgData.data;
   for (var z = 0; z < data.length; z += 4) { data[z] = 0; data[z+1] = 0; data[z+2] = 0; data[z+3] = 0; }
 
-  /* ── Параметры красных лучей маяка ── */
+  /* луч маяка */
   var beamActive = state && state.colonized;
-  var lhSx = 0, lhSy = 0, dirX1 = 1, dirY1 = 0, dirX2 = -1, dirY2 = 0;
-  var scanLenSq = 0, cosThreshold = 1, nightBright = 1;
+  var lhSx = 0, lhSy = 0, dirX1 = 1, dirY1 = 0, dirX2 = -1, dirY2 = 0, scanLenSq = 0, cosThreshold = 1, nightBright = 1;
   var lhAbove = (state && state.lhAbove) || 0;
   if (beamActive) {
-    var lh = state.lighthouse;
-    var bc = toScreen(lh.x, lh.y);
+    var bc = toScreen(state.lighthouse.x, state.lighthouse.y);
     lhSx = bc[0]; lhSy = bc[1];
-    var br = 0.7 * lhScale;
-    var nf = (state && state.nightFactor) || 0;   /* 0=день … 1=ночь, плавно */
-    var reach = 1.25 + nf * 0.55;                 /* ночью светят дальше (плавно) */
-    nightBright = 1.0 + nf * 0.7;                 /* ночью ярче (плавно) */
-    var scanLen = br * CFG.SCANNER_RANGE_MULT * 5.4 * reach; /* дальность значительно больше */
-    scanLenSq = scanLen * scanLen;
-    cosThreshold = Math.cos(0.25);
-    var beamRot = state.time * 0.45;              /* вращение на 25% медленнее */
-    dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot);
-    dirX2 = -dirX1; dirY2 = -dirY1;
+    var br = 0.7 * lhScale, nf = (state && state.nightFactor) || 0;
+    var reach = 1.25 + nf * 0.55; nightBright = 1.0 + nf * 0.7;
+    var scanLen = br * CFG.SCANNER_RANGE_MULT * 5.4 * reach;
+    scanLenSq = scanLen * scanLen; cosThreshold = Math.cos(0.25);
+    var beamRot = state.time * 0.45;
+    dirX1 = Math.cos(beamRot); dirY1 = Math.sin(beamRot); dirX2 = -dirX1; dirY2 = -dirY1;
   }
 
   var invCell = 1 / CLOUD_CELL;
@@ -781,99 +715,54 @@ function renderCloudsToCtx(destCtx, w, h, layerFilter) {
     var layer = cloudLayers[layerIdx];
     if (!layer.enabled) continue;
     if (layerFilter !== null && layerFilter.indexOf(layerIdx) === -1) continue;
-    var xstep = layer.cheap ? 2 : 1;
-    var la255 = layer.alpha * 255;
-    var den = layer.den;
-    var hasHole = layer.holeActive, hole = layer.hole;
-
-    /* Насколько луч просвечивает ЭТОТ слой: нижний — полностью, дальние — меньше,
-       и тем сильнее пробивает, чем выше поднят маяк (lhAbove). */
-    var altGap = layer.altitude - cloudLayers[0].altitude; if (altGap < 0) altGap = 0;
-    var beamPen = 1 - altGap * (0.7 - 0.45 * lhAbove);  /* дальний слой просвечивает сильнее, чем раньше */
+    var fld = layer.field, la = layer.alpha;
+    var altGap = layerIdx * 0.7;
+    var beamPen = 1 - altGap * (0.7 - 0.45 * lhAbove);
     if (beamPen < 0.4) beamPen = 0.4; else if (beamPen > 1) beamPen = 1;
 
     for (var oy = 0; oy < oh; oy++) {
-      var sy = oy * ds;
-      var gy = sy * invCell;
-      var rowOff = oy * ow * 4;
-      var dyBeam = sy - lhSy;
-
-      for (var ox = 0; ox < ow; ox += xstep) {
+      var sy = oy * ds, gy = sy * invCell, rowOff = oy * ow * 4, dyBeam = sy - lhSy;
+      for (var ox = 0; ox < ow; ox++) {
         var sx = ox * ds;
-        var gxs = sx * invCell;
-        var hVal = sampleGrid(den, gxs, gy);
-        if (hasHole) hVal -= sampleGrid(hole, gxs, gy); /* пробитые дыры не заживают */
+        var hVal = sampleGrid(fld, sx * invCell, gy);
+        if (hVal < 0.04) continue; /* чистое небо */
 
-        /* Мелкая структура, ползущая ВМЕСТЕ с облаком (высокочастотно → зерно, не полосы),
-           модулируется плотностью, чтобы не «шуметь» в чистом небе. */
-        var pres = hVal < 0 ? 0 : (hVal > 1 ? 1 : hVal);
-        if (pres > 0.02) {
-          var dux = sx - layer.driftX * _simTime;
-          var duy = sy - layer.driftY * _simTime;
-          var det = _smoothNoise(dux * DETAIL_FREQ + layer.seed0, duy * DETAIL_FREQ) * 0.67
-                  + _smoothNoise(dux * DETAIL_FREQ * 2.7 + 40.0, duy * DETAIL_FREQ * 2.7) * 0.33;
-          hVal += (det - 0.5) * DETAIL_AMP * pres;
-        }
-        /* упорядоченный дизеринг — гранулярные пиксельные края */
+        /* лёгкое зерно + дизеринг кромки (гранулярность, не альфа-пелена) */
+        var det = _smoothNoise((sx - layer.dx * _simTime) * DETAIL_FREQ, (sy - layer.dy * _simTime) * DETAIL_FREQ);
+        hVal += (det - 0.5) * DETAIL_AMP;
         hVal += (_BAYER[(oy & 3) * 4 + (ox & 3)] * 0.0625 - 0.5) * DITHER_AMP;
 
-        /* ── Красный луч маяка: прозрачность в центре + красная заливка/кромка ── */
         var redRim = 0;
         if (beamActive) {
-          var dxB = sx - lhSx;
-          var distSq = dxB * dxB + dyBeam * dyBeam;
+          var dxB = sx - lhSx, distSq = dxB * dxB + dyBeam * dyBeam;
           if (distSq > 4 && distSq < scanLenSq) {
-            var invDist = 1 / Math.sqrt(distSq);
-            var inBeam = 0;
-            var dot1 = dxB * dirX1 + dyBeam * dirY1;
-            var cosA1 = dot1 * invDist;
-            if (cosA1 > cosThreshold && dot1 > 0) {
-              inBeam = (1 - distSq / scanLenSq) * ((cosA1 - cosThreshold) / (1 - cosThreshold));
-            } else {
-              var dot2 = dxB * dirX2 + dyBeam * dirY2;
-              var cosA2 = dot2 * invDist;
-              if (cosA2 > cosThreshold && dot2 > 0) {
-                inBeam = (1 - distSq / scanLenSq) * ((cosA2 - cosThreshold) / (1 - cosThreshold));
-              }
-            }
-            if (inBeam > 0) {
-              if (inBeam > 1) inBeam = 1;
-              var clear = inBeam * beamPen;
-              hVal -= clear * 0.72;   /* сильнее просвечивание обоих слоёв */
-              /* эффектный прожектор: яркая кромка + мягкая красная заливка вдоль всего луча */
-              redRim = (clear * (1 - clear) * 5.0 + clear * 0.4) * nightBright * beamPen;
-            }
+            var invDist = 1 / Math.sqrt(distSq), inBeam = 0;
+            var dot1 = dxB * dirX1 + dyBeam * dirY1, cosA1 = dot1 * invDist;
+            if (cosA1 > cosThreshold && dot1 > 0) inBeam = (1 - distSq / scanLenSq) * ((cosA1 - cosThreshold) / (1 - cosThreshold));
+            else { var dot2 = dxB * dirX2 + dyBeam * dirY2, cosA2 = dot2 * invDist; if (cosA2 > cosThreshold && dot2 > 0) inBeam = (1 - distSq / scanLenSq) * ((cosA2 - cosThreshold) / (1 - cosThreshold)); }
+            if (inBeam > 0) { if (inBeam > 1) inBeam = 1; var clear = inBeam * beamPen; hVal -= clear * 0.9; redRim = (clear * (1 - clear) * 5.0 + clear * 0.4) * nightBright * beamPen; }
           }
         }
 
-        var c = heightToColor(hVal);
-        var alpha = hVal < 0.28 ? 0 : Math.min(255, ((hVal - 0.28) / 0.35) * 255);
+        /* ЧЁТКИЙ порог: есть облако или нет (без длинного альфа-градиента) */
+        if (hVal < CLOUD_T) continue;
+        var c = heightToColor(0.55 + (hVal - CLOUD_T) * 0.6);
         var cr = (c >> 16) & 0xff, cg = (c >> 8) & 0xff, cb = c & 0xff;
+        if (redRim > 0) { if (redRim > 1) redRim = 1; cr = (cr * (1 - redRim * 0.35) + 235 * redRim) | 0; if (cr > 255) cr = 255; cg = (cg * (1 - redRim * 0.8)) | 0; cb = (cb * (1 - redRim * 0.65)) | 0; }
 
-        if (redRim > 0 && alpha > 0) {
-          if (redRim > 1) redRim = 1;
-          cr = (cr * (1 - redRim * 0.35) + 235 * redRim) | 0; if (cr > 255) cr = 255;
-          cg = (cg * (1 - redRim * 0.8)) | 0;
-          cb = (cb * (1 - redRim * 0.65)) | 0;
-        }
-
-        var layerAlpha = (alpha * la255 / 255) | 0;
-        for (var sxi = 0; sxi < xstep; sxi++) {
-          var oxx = ox + sxi;
-          if (oxx >= ow) break;
-          var off = rowOff + oxx * 4;
-          var na = data[off+3] + layerAlpha;
-          data[off]   = Math.min(255, data[off]   + cr * layerAlpha / 255) | 0;
-          data[off+1] = Math.min(255, data[off+1] + cg * layerAlpha / 255) | 0;
-          data[off+2] = Math.min(255, data[off+2] + cb * layerAlpha / 255) | 0;
-          data[off+3] = na > 255 ? 255 : na;
-        }
+        var off = rowOff + ox * 4;
+        var la255 = (la * 255) | 0;
+        var na = data[off + 3] + la255;
+        data[off]     = Math.min(255, data[off]     + cr * la255 / 255) | 0;
+        data[off + 1] = Math.min(255, data[off + 1] + cg * la255 / 255) | 0;
+        data[off + 2] = Math.min(255, data[off + 2] + cb * la255 / 255) | 0;
+        data[off + 3] = na > 255 ? 255 : na;
       }
     }
   }
   _cloudCtx2.putImageData(_cloudImgData, 0, 0);
   var prevSmooth = destCtx.imageSmoothingEnabled;
-  destCtx.imageSmoothingEnabled = false; /* nearest-upscale → чёткие пиксели вместо мыла */
+  destCtx.imageSmoothingEnabled = false;
   destCtx.drawImage(_cloudCvs, 0, 0, ow, oh, 0, 0, w, h);
   destCtx.imageSmoothingEnabled = prevSmooth;
 }
@@ -2088,89 +1977,59 @@ function addLight(x, y, radius, color, life) {
   state.lights.push({ x:x, y:y, radius:radius, color:color, life:life, maxLife:life });
 }
 /*
- * Взрыв прожигает облака НАСКВОЗЬ (все слои) и оставляет постоянную дыру.
+ * Взрыв = ВОЛНА ДЕКОМПРЕССИИ: физически разгоняет клубы облаков наружу.
  *   maxRadius — базовый радиус (мировые юниты)
- *   power     — сила 0..1
- *   alt       — не используется (оставлено для совместимости вызовов)
- *
- * Даже слабый выстрел пробивает оба слоя (сила с полом), сильный — очень широко и
- * с кольцом ударной волны (эпично). Дыры пишутся в поле hole (не заживают, дрейфуют).
+ *   power     — сила 0..1 ; alt не используется.
+ * Дыра открывается движением клубов и сама затягивается, когда они приплывают
+ * обратно (никаких «нарисованных» дыр). Сильный взрыв бьёт шире и мощнее.
  */
 function addCrater(wx, wy, maxRadius, power, alt) {
   if (tw === 0) return;
   power = (power === undefined) ? 1 : (power < 0 ? 0 : power > 1 ? 1 : power);
   var sc = toScreen(wx, wy);
   var sx = sc[0], sy = sc[1];
-  var deckAlt = cloudLayers[0].altitude;
-
+  var blastR = maxRadius * scale * (1.5 + power * 1.4);
+  var strength = (140 + power * 340);          /* импульс, px/s */
   for (var li = 0; li < cloudLayers.length; li++) {
-    var L = cloudLayers[li];
-    if (!L.enabled) continue;
-    /* пол силы 0.7 → даже слабый выстрел ПРОБИВАЕТ этот слой; дальние чуть слабее */
-    var s = (0.7 + power * 0.55) * (1 - (L.altitude - deckAlt) * 0.12);
-    spawnLayerCrater(li, sx, sy, maxRadius * (0.8 + power * 0.7), s);
-  }
-
-  /* Эпичный сильный выстрел: кольцо осколочных дыр (ударная волна) во всех слоях */
-  if (power > 0.45) {
-    var ring = 2 + Math.floor(power * 4);
-    var off = maxRadius * scale * (0.9 + power * 0.8);
-    var a0 = Math.random() * TAU;
-    for (var k = 0; k < ring; k++) {
-      var a = a0 + (k / ring) * TAU;
-      var rx = sx + Math.cos(a) * off, ry = sy + Math.sin(a) * off;
-      for (var li2 = 0; li2 < cloudLayers.length; li2++) {
-        if (!cloudLayers[li2].enabled) continue;
-        spawnLayerCrater(li2, rx, ry, maxRadius * (0.3 + power * 0.4), 0.55 + power * 0.4);
+    var L = cloudLayers[li]; if (!L.enabled) continue;
+    var pf = L.puffs;
+    for (var k = 0; k < pf.length; k++) {
+      var p = pf[k], dx = p.x - sx, dy = p.y - sy, d = Math.sqrt(dx * dx + dy * dy);
+      if (d < blastR && d > 0.5) {
+        var f = 1 - d / blastR; f = f * f;         /* ближе к центру — сильнее */
+        var push = strength * f;
+        p.vx += dx / d * push; p.vy += dy / d * push;
+        p.r *= (1 - 0.35 * f);                     /* сжатие клуба на фронте волны */
       }
     }
   }
+  /* видимое ударное кольцо декомпрессии */
+  craters.push({ x: sx, y: sy, r: blastR * 0.15, maxR: blastR, life: 0.45, maxLife: 0.45, power: power });
 }
 
-function spawnLayerCrater(layerIdx, sx, sy, maxRadius, strength) {
-  /* Кратер лишь «штампует» дыру в поле hole за короткий рост, затем удаляется —
-     сама дыра живёт в поле hole (дрейфует, почти не заживает). */
-  var rGrid = (maxRadius * scale) / CLOUD_CELL;
-  if (rGrid < 0.8) rGrid = 0.8;
-  craters.push({
-    layerIdx: layerIdx,
-    gx: sx / CLOUD_CELL,
-    gy: sy / CLOUD_CELL,
-    r: rGrid * 0.35,
-    maxR: rGrid,
-    growth: rGrid * 6.0,               /* быстрый «пробой» */
-    strength: strength > 1 ? 1 : strength
-  });
-}
+/* совместимость: старое имя больше не нужно, но пусть будет безопасным no-op */
+function spawnLayerCrater() {}
 
+/* Ударные кольца декомпрессии (визуал) */
 function updateCraters(dt) {
-  if (tw === 0) return;
   for (var ci = craters.length - 1; ci >= 0; ci--) {
     var c = craters[ci];
-    var layer = cloudLayers[c.layerIdx];
-    if (!layer || !layer.enabled) { craters.splice(ci, 1); continue; }
-
-    c.r = Math.min(c.r + c.growth * dt, c.maxR);
-    var rad = c.r;
-    var hole = layer.hole;
-    layer.holeActive = true;
-    var rC = Math.ceil(rad) + 1;
-    var cxI = Math.round(c.gx), cyI = Math.round(c.gy);
-    for (var dj = -rC; dj <= rC; dj++) {
-      var j = cyI + dj; if (j < 0 || j >= gh) continue;
-      for (var di = -rC; di <= rC; di++) {
-        var i = cxI + di; if (i < 0 || i >= gw) continue;
-        var dx = i - c.gx, dy = j - c.gy, d = Math.sqrt(dx * dx + dy * dy);
-        if (d < rad) {
-          var f = 1 - d / rad; f = f * (2 - f);      /* мягкий, но глубокий профиль */
-          var val = c.strength * f;
-          var idx = j * gw + i;
-          if (val > hole[idx]) hole[idx] = val;        /* дыра пробивает облако (макс) */
-        }
-      }
-    }
-    if (c.r >= c.maxR) craters.splice(ci, 1);          /* штамп завершён — дыра остаётся в hole */
+    c.r += (c.maxR - c.r) * 6 * dt;
+    c.life -= dt;
+    if (c.life <= 0) craters.splice(ci, 1);
   }
+}
+function drawCloudShocks() {
+  if (craters.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (var i = 0; i < craters.length; i++) {
+    var c = craters[i], a = Math.max(0, c.life / c.maxLife);
+    ctx.strokeStyle = 'rgba(200,225,255,' + (a * 0.5) + ')';
+    ctx.lineWidth = 2 + c.power * 3;
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
 }
 function updateLights(dt) {
   for (var i = state.lights.length - 1; i >= 0; i--) {
@@ -2814,6 +2673,7 @@ function render() {
   /* Линия прицела ПОД облаками */
   if (state.dragging) drawAimLine();
   drawCloudLayer();        /* облака поверх врагов + луч перекрашивает в красный */
+  drawCloudShocks();       /* кольца декомпрессии от взрывов */
   /* Маяк НАД облаками когда lhAbove >= 0.5 */
   if (state.lhAbove >= 0.5) {
     ctx.save();
@@ -3464,7 +3324,7 @@ function drawCloudLayer() {
 }
 
 function drawCloudLayer1() {
-  renderCloudsToCtx(ctx, W, H, [1, 2]); /* верхний слой + тонкий третий слой — поверх всего */
+  renderCloudsToCtx(ctx, W, H, [1]); /* верхний слой клубов — поверх всего */
 }
 
 function drawSmogLighting() {
