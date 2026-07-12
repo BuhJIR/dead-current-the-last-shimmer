@@ -65,6 +65,7 @@ canvas { display:block; width:100%; height:100%; }
 .ammo-btn:not(.locked):hover { --stripe: #666; }
 .ammo-btn canvas { display:block; }
 #shop-btn {
+  display:none; /* прокачка теперь в мире — на иконках городов */
   --primary: #ffab00; --shadow-primary: #ff3d00; --color: #fff; --border: 3px; --stripe: #ff3d00;
   --clip: polygon(10% 0, 90% 0, 100% 30%, 95% 100%, 5% 100%, 0 30%);
   position:fixed; bottom:12px; right:12px; z-index:10;
@@ -910,6 +911,10 @@ function freshState() {
     selectedAmmo: 0,
     colonyTier: 0,
     perks: freshPerks(),
+    cities: [],        /* прокачиваемые города {x,y,r,up:{plant,pop,sci,cap},feed,flicker} */
+    foundSites: [],    /* кратеры, где можно заложить новый город */
+    volley: [],        /* отложенные бонусные выстрелы (гигаконденсаторы) */
+    activeCity: -1,    /* индекс города с открытой панелью прокачки, -1 = закрыта */
     shakeTimer: 0,
     shakeIntensity: 0,
     gameOver: false,
@@ -933,7 +938,159 @@ function freshState() {
   };
 }
 function perkLvl(id){ return state.perks[id]||0; }
-function tier(){ return COLONY_TIERS[state.colonyTier]; }
+/* ═══════════════ ГОРОДА И ИХ ПРОКАЧКА ═══════════════ */
+var CITY_FOUND_COST = 80;
+var CITY_UPGRADES = [
+  { key:'plant', icon:'⚡', name:'ЭЛЕКТРОСТАНЦИЯ', max:5, base:20, step:14 }, /* +заряд/урон, провода с током */
+  { key:'pop',   icon:'👥', name:'НАСЕЛЕНИЕ',      max:3, base:35, step:30 }, /* ×бонус отдыха */
+  { key:'sci',   icon:'🔬', name:'НАУКА',          max:4, base:30, step:26 }, /* бонусы снарядам + новые боеприпасы */
+  { key:'cap',   icon:'🔋', name:'ГИГАКОНДЕНСАТОР',max:3, base:50, step:45 }  /* доп. выстрел с задержкой */
+];
+var SCI_PERK_ORDER = ['chain_lightning','crit','fast_charge','range','tesla','vortex','overcharge','singularity'];
+
+/* Суммарные бонусы со всех городов */
+function cityAgg() {
+  var a = { plant:0, pop:0, sci:0, cap:0, capCities:0, n:0 };
+  if (state && state.cities) {
+    a.n = state.cities.length;
+    for (var i = 0; i < state.cities.length; i++) {
+      var u = state.cities[i].up;
+      a.plant += u.plant; a.pop += u.pop; a.sci += u.sci; a.cap += u.cap;
+      if (u.cap > 0) a.capCities++;
+    }
+  }
+  a.chargeMult = 1 + a.plant * 0.10;
+  a.dmgMult    = 1 + a.plant * 0.03;
+  a.restMult   = 1 + a.pop * 1.0;          /* население: ×2 при 1 ур., ×3 при 2 … */
+  a.extraShots = Math.max(0, a.n - 1) + a.capCities; /* 2 города с конденсаторами → 4 выстрела */
+  return a;
+}
+function tier() { return cityAgg(); } /* совместимость: tier().dmgMult / tier().chargeMult */
+
+function foundCity(sx, sy) {
+  state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0 }, feed:0, flicker:0, born: state.time });
+  state.lives += 1;
+  /* декоративный рост города из кратера */
+  var numRays = 3 + Math.floor(Math.random() * 4);
+  for (var ri = 0; ri < numRays; ri++) {
+    cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
+  }
+  showWaveText('🏙 НОВЫЙ ГОРОД');
+  buildAmmoBar();
+}
+
+function grantSciPerk() {
+  for (var i = 0; i < SCI_PERK_ORDER.length; i++) {
+    var id = SCI_PERK_ORDER[i], mx = 1;
+    for (var k = 0; k < PERK_DEFS.length; k++) if (PERK_DEFS[k].id === id) mx = PERK_DEFS[k].maxLvl;
+    if ((state.perks[id] || 0) < mx) { state.perks[id] = (state.perks[id] || 0) + 1; return; }
+  }
+}
+function buyCityUpgrade(city, key) {
+  for (var i = 0; i < CITY_UPGRADES.length; i++) {
+    var u = CITY_UPGRADES[i];
+    if (u.key !== key) continue;
+    var lvl = city.up[key];
+    if (lvl >= u.max) return;
+    var cost = u.base + u.step * lvl;
+    if (state.energy < cost) return;
+    state.energy -= cost; city.up[key]++;
+    if (key === 'sci') { grantSciPerk(); buildAmmoBar(); }
+    city.feed = 0.6; city.flicker = 0.5;
+    updateHUD();
+    return;
+  }
+}
+
+function triggerCityFeed() {
+  for (var i = 0; i < state.cities.length; i++) {
+    state.cities[i].feed = 0.6;
+    if (state.cities[i].up.cap > 0) state.cities[i].flicker = 0.5;
+  }
+}
+function updateVolley(dt) {
+  for (var i = state.volley.length - 1; i >= 0; i--) {
+    var v = state.volley[i]; v.delay -= dt;
+    if (v.delay <= 0) {
+      fireProjectile(v.x, v.y, v.nx, v.ny, v.speed, v.charge, v.ammoIdx);
+      triggerCityFeed();
+      state.volley.splice(i, 1);
+    }
+  }
+}
+function updateCities(dt) {
+  var charging = state.dragging;
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i];
+    if (charging) c.feed = Math.max(c.feed, 0.35);
+    c.feed -= dt * 1.4; if (c.feed < 0) c.feed = 0;
+    c.flicker -= dt * 1.3; if (c.flicker < 0) c.flicker = 0;
+  }
+}
+
+/* Позиции электростанций между городом и башней (ближе к башне) */
+function plantPositions(city) {
+  var out = [];
+  var P = city.up.plant; if (P <= 0) return out;
+  var lh = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var dx = lh[0] - city.x, dy = lh[1] - city.y;
+  var len = Math.sqrt(dx * dx + dy * dy) || 1;
+  var px = -dy / len, py = dx / len;
+  for (var k = 0; k < P; k++) {
+    var t = 0.52 + 0.11 * k;
+    var off = (k % 2 ? 1 : -1) * (13 + 6 * (k >> 1));
+    out.push({ x: city.x + dx * t + px * off, y: city.y + dy * t + py * off });
+  }
+  return out;
+}
+
+/* ── Хит-боксы иконок (экранные координаты) ── */
+function cityIconRect(c) { return { x: c.x - 13, y: c.y - c.r - 30, w: 26, h: 26 }; }
+function foundIconRect(s) { return { x: s.x - 15, y: s.y - 32, w: 30, h: 26 }; }
+function cityPanelButtons(city) {
+  var bw = 172, bh = 30, gap = 6, N = CITY_UPGRADES.length;
+  var bx = city.x + 26, by = city.y - (N * (bh + gap)) / 2;
+  if (bx + bw > W - 6) bx = city.x - 26 - bw;
+  if (bx < 6) bx = 6;
+  if (by < 44) by = 44;
+  if (by + N * (bh + gap) > H - 30) by = H - 30 - N * (bh + gap);
+  var out = [];
+  for (var i = 0; i < N; i++) {
+    var u = CITY_UPGRADES[i], lvl = city.up[u.key], maxed = lvl >= u.max, cost = u.base + u.step * lvl;
+    out.push({ x: bx, y: by + i * (bh + gap), w: bw, h: bh, def: u, level: lvl, maxed: maxed, cost: cost, afford: state.energy >= cost });
+  }
+  return out;
+}
+
+/* Тап по миру: иконки городов / кнопки панели / основание нового города.
+   Возвращает true, если тап «съеден» (не начинать перетаскивание маяка). */
+function cityHitTest(sx, sy) {
+  if (!state.colonized) return false;
+  if (state.activeCity >= 0 && state.cities[state.activeCity]) {
+    var btns = cityPanelButtons(state.cities[state.activeCity]);
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h) {
+        if (!b.maxed && b.afford) buyCityUpgrade(state.cities[state.activeCity], b.def.key);
+        return true;
+      }
+    }
+    state.activeCity = -1; /* тап мимо панели — закрываем и пропускаем дальше */
+    return false;
+  }
+  for (var c = 0; c < state.cities.length; c++) {
+    var r = cityIconRect(state.cities[c]);
+    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; return true; }
+  }
+  for (var s = 0; s < state.foundSites.length; s++) {
+    var fr = foundIconRect(state.foundSites[s]);
+    if (sx >= fr.x && sx <= fr.x + fr.w && sy >= fr.y && sy <= fr.y + fr.h) {
+      if (state.energy >= CITY_FOUND_COST) { state.energy -= CITY_FOUND_COST; foundCity(state.foundSites[s].x, state.foundSites[s].y); state.foundSites.splice(s, 1); updateHUD(); }
+      return true;
+    }
+  }
+  return false;
+}
 
 /* ═══════════════ CANVAS SETUP ═══════════════ */
 var dpr = 1;
@@ -1320,13 +1477,16 @@ function fireProjectile(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) {
 
 /* fire with multishot perk */
 function doFire(lhx,lhy,nx,ny,speed,charge,ammoIdx){
-  var ms=perkLvl('multishot');
-  var count=1+ms;
-  for(var i=0;i<count;i++){
-    var spread=(i-(count-1)/2)*0.12;
-    var cs=Math.cos(spread),sn=Math.sin(spread);
-    var dx2=nx*cs-ny*sn, dy2=nx*sn+ny*cs;
-    fireProjectile(lhx,lhy-0.6,dx2,dy2,speed*(1-Math.abs(spread)*0.15),charge,ammoIdx);
+  /* Базовый выстрел сразу */
+  fireProjectile(lhx,lhy-0.6,nx,ny,speed,charge,ammoIdx);
+  triggerCityFeed();
+  /* Гигаконденсаторы/города дают бонусные выстрелы В ТОМ ЖЕ направлении, с задержкой.
+     Сила конденсаторов усиливает заряд бонусных снарядов. */
+  var agg = cityAgg();
+  var extra = agg.extraShots;
+  var capBoost = 1 + 0.12 * agg.cap;
+  for(var k=0;k<extra;k++){
+    state.volley.push({ delay:0.13*(k+1), x:lhx, y:lhy-0.6, nx:nx, ny:ny, speed:speed*(1-0.03*k), charge:charge*capBoost, ammoIdx:ammoIdx });
   }
 }
 
@@ -1382,7 +1542,8 @@ function onContact(contact) {
 
   var vel = projBody.getLinearVelocity();
   var impactSpeed = vel.length();
-  var dmgMult = tier().dmgMult * (1 + state.restBonus); /* бонус отдыха повышает урон на всю волну */
+  var _agg = cityAgg();
+  var dmgMult = _agg.dmgMult * (1 + state.restBonus * _agg.restMult); /* электростанции + отдых×население */
   var damage = (impactSpeed * CFG.DMG_VEL_FACTOR + proj.charge * CFG.DMG_CHARGE_FACTOR) * dmgMult;
 
   /* crit perk */
@@ -2103,6 +2264,8 @@ function initInput() {
   function onDown(e) {
     if (state.gameOver) return;
     var p = getPos(e);
+    /* Сначала — тап по иконкам/панели прокачки городов */
+    if (cityHitTest(p.x * scale, p.y * scale)) { e.preventDefault && e.preventDefault(); return; }
     var lh = state.lighthouse;
     var dx = p.x - lh.x, dy = p.y - lh.y;
     if (dx*dx + dy*dy < 3.5*3.5) {
@@ -2145,7 +2308,7 @@ function initInput() {
         state.charge = 0;
         return;
       }
-      var maxVel = 18 + state.colonyTier * 2;
+      var maxVel = 18 + cityAgg().plant;
       var speed = Math.min(dist * CFG.VEL_FACTOR, maxVel);
       var nx = dx / dist, ny = dy / dist;
       doFire(lh.x, lh.y, nx, ny, speed, state.charge, state.selectedAmmo);
@@ -2217,8 +2380,9 @@ function update(dt) {
   /* Charge while dragging — colony chargeMult + fast_charge perk */
   var maxCharge = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
   if (state.dragging) {
-    var chgSpd = CFG.CHARGE_SPEED * 0.5 * tier().chargeMult * (1 + perkLvl('fast_charge') * 0.3);
-    chgSpd *= (1 + state.restBonus); /* бонус отдыха ускоряет зарядку на всю волну */
+    var _cagg = cityAgg();
+    var chgSpd = CFG.CHARGE_SPEED * 0.5 * _cagg.chargeMult * (1 + perkLvl('fast_charge') * 0.3);
+    chgSpd *= (1 + state.restBonus * _cagg.restMult); /* электростанции + отдых×население */
     state.charge = Math.min(state.charge + dt * chgSpd, maxCharge);
   }
 
@@ -2595,6 +2759,8 @@ function update(dt) {
   updatePlateDebris(dt);
   updateShrapnel(dt);
   updateBurning(dt);
+  updateVolley(dt);
+  updateCities(dt);
 
   /* === PHYSICS STEP with deferred body management === */
   /* First: destroy queued bodies BEFORE step */
@@ -2667,6 +2833,9 @@ function render() {
 
   /* ── Слой 1 облаков поверх всего (включая UI) ── */
   drawCloudLayer1();
+
+  /* ── UI прокачки городов ПОВЕРХ облаков ── */
+  drawCityUI();
 
   /* ── Круг-подсказка туториала ПОВЕРХ всех облаков ── */
   if (_tut.state === 'hold' || (_tut.state === 'active' && _tutDragPct() < 0.2)) {
@@ -2809,6 +2978,7 @@ function createShotCrater(worldX, worldY, charge) {
     /* Первый кратер — ПОД городом (на _surfCtx) */
     drawCraterOnCtx(_surfCtx, sx, sy, cr);
     state.firstColony = true;
+    state.cities.push({ x: sx, y: sy, r: 22, up: { plant:0, pop:0, sci:0, cap:0 }, feed:0, flicker:0, born:0 });
     state.clock = 0;             /* игровые часы стартуют с основания колонии */
     state.restStartClock = 0;
     var tutBonus = tutOnFire();
@@ -2823,6 +2993,20 @@ function createShotCrater(worldX, worldY, charge) {
   } else {
     /* Последующие кратеры — ПОВЕРХ города (разрушение) */
     destructionCraters.push({ x: sx, y: sy, r: cr });
+
+    /* Достаточно крупный кратер вдали от городов → место под НОВЫЙ город */
+    if (charge >= 0.4 && cr >= 18) {
+      var farOk = true;
+      for (var ci = 0; ci < state.cities.length; ci++) {
+        var cc = state.cities[ci], ddx = cc.x - sx, ddy = cc.y - sy;
+        if (ddx * ddx + ddy * ddy < 95 * 95) { farOk = false; break; }
+      }
+      for (var fi2 = 0; farOk && fi2 < state.foundSites.length; fi2++) {
+        var fs = state.foundSites[fi2], fdx = fs.x - sx, fdy = fs.y - sy;
+        if (fdx * fdx + fdy * fdy < 70 * 70) { farOk = false; break; }
+      }
+      if (farOk && state.foundSites.length < 4) state.foundSites.push({ x: sx, y: sy });
+    }
 
     /* Остановить строительство города */
     cityQueue.length = 0;
@@ -3118,6 +3302,118 @@ function updateCityGrowth(dt) {
   for (var ci = 0; ci < completed.length; ci++) spawnCity(completed[ci]);
 }
 
+/* Бегущий ток по проводу от города к башне (как плазма, которой стреляем) */
+function drawWireCurrent(ax, ay, bx, by, color, intensity, phase) {
+  var segLen = Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+  var dots = Math.max(2, Math.floor(segLen / 16));
+  ctx.fillStyle = color;
+  for (var k = 0; k < dots; k++) {
+    var t = ((k / dots) + phase) % 1;
+    var x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+    var rr2 = 1.6 + intensity * 1.6;
+    ctx.beginPath(); ctx.arc(x, y, rr2, 0, TAU); ctx.fill();
+  }
+}
+
+/* Города в мире: электростанции, провода с током, мерцание света (под облаками) */
+function drawCityWorld() {
+  if (!state.colonized || !state.cities.length) return;
+  var lh = toScreen(state.lighthouse.x, state.lighthouse.y);
+  var ammoColor = getActiveAmmoColor();
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i];
+    var plants = plantPositions(c);
+    var flow = Math.max(c.feed, state.dragging ? 0.4 : 0);
+    /* провода: город → башня и станции → башня/город */
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,160,180,0.30)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(lh[0], lh[1]); ctx.stroke();
+    for (var k = 0; k < plants.length; k++) {
+      ctx.beginPath(); ctx.moveTo(plants[k].x, plants[k].y); ctx.lineTo(c.x, c.y);
+      ctx.moveTo(plants[k].x, plants[k].y); ctx.lineTo(lh[0], lh[1]); ctx.stroke();
+    }
+    ctx.restore();
+    /* ток по проводам во время зарядки/выстрела */
+    if (flow > 0.02) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = ammoColor; ctx.shadowBlur = 6;
+      drawWireCurrent(c.x, c.y, lh[0], lh[1], ammoColor, flow, (state.time * 1.3) % 1);
+      for (var k2 = 0; k2 < plants.length; k2++) drawWireCurrent(plants[k2].x, plants[k2].y, lh[0], lh[1], ammoColor, flow, (state.time * 1.6 + k2 * 0.2) % 1);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+    /* электростанции */
+    for (var k3 = 0; k3 < plants.length; k3++) {
+      var pp = plants[k3];
+      ctx.save(); ctx.translate(pp.x, pp.y);
+      ctx.fillStyle = '#0a1a22'; ctx.strokeStyle = '#37e0ff'; ctx.lineWidth = 1.5;
+      ctx.fillRect(-6, -6, 12, 12); ctx.strokeRect(-6, -6, 12, 12);
+      ctx.fillStyle = hexToRgba('#ffd600', 0.7 + 0.3 * Math.sin(state.time * 6 + k3));
+      ctx.fillRect(-2.5, -2.5, 5, 5);
+      ctx.restore();
+    }
+    /* мерцание света в городе (гаснет частями) */
+    if (c.flicker > 0.02) {
+      for (var f = 0; f < 3; f++) {
+        var fa = Math.random() * TAU, fd = Math.random() * c.r;
+        ctx.fillStyle = 'rgba(0,0,0,' + (c.flicker * 0.5) + ')';
+        ctx.fillRect(c.x + Math.cos(fa) * fd - 5, c.y + Math.sin(fa) * fd - 5, 10, 10);
+      }
+    }
+  }
+}
+
+/* UI городов поверх облаков: иконки, места под новый город, панель прокачки */
+function drawCityUI() {
+  if (!state.colonized) return;
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  /* места под новый город */
+  for (var s = 0; s < state.foundSites.length; s++) {
+    var st = state.foundSites[s], r = foundIconRect(st);
+    var can = state.energy >= CITY_FOUND_COST;
+    ctx.fillStyle = can ? 'rgba(0,40,20,0.85)' : 'rgba(30,30,30,0.8)';
+    ctx.strokeStyle = can ? '#00e676' : '#556'; ctx.lineWidth = 2;
+    ctx.fillRect(r.x, r.y, r.w, r.h); ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = can ? '#00e676' : '#889'; ctx.font = '700 10px "Chakra Petch"';
+    ctx.fillText('+ ГОРОД', st.x, r.y + 8);
+    ctx.fillText('⚡' + CITY_FOUND_COST, st.x, r.y + 18);
+  }
+  /* иконки прокачки городов */
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i], ir = cityIconRect(c), open = state.activeCity === i;
+    ctx.fillStyle = open ? 'rgba(0,60,80,0.95)' : 'rgba(6,20,28,0.9)';
+    ctx.strokeStyle = '#37e0ff'; ctx.lineWidth = 2;
+    ctx.fillRect(ir.x, ir.y, ir.w, ir.h); ctx.strokeRect(ir.x, ir.y, ir.w, ir.h);
+    ctx.fillStyle = '#37e0ff'; ctx.font = '15px sans-serif';
+    ctx.fillText('⚙', c.x, ir.y + 14);
+  }
+  /* панель активного города */
+  if (state.activeCity >= 0 && state.cities[state.activeCity]) {
+    var btns = cityPanelButtons(state.cities[state.activeCity]);
+    for (var b = 0; b < btns.length; b++) {
+      var bt = btns[b];
+      ctx.fillStyle = 'rgba(5,12,20,0.95)';
+      ctx.strokeStyle = bt.maxed ? '#00e5ff' : (bt.afford ? '#ffab00' : '#555');
+      ctx.lineWidth = 2;
+      ctx.fillRect(bt.x, bt.y, bt.w, bt.h); ctx.strokeRect(bt.x, bt.y, bt.w, bt.h);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#e8eaed'; ctx.font = '700 11px "Chakra Petch"';
+      ctx.fillText(bt.def.icon + ' ' + bt.def.name, bt.x + 8, bt.y + 11);
+      var dt2 = ''; for (var d = 0; d < bt.def.max; d++) dt2 += d < bt.level ? '●' : '○';
+      ctx.fillStyle = '#37e0ff'; ctx.font = '9px "Chakra Petch"';
+      ctx.fillText(dt2, bt.x + 8, bt.y + 22);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = bt.maxed ? '#00e5ff' : (bt.afford ? '#ffab00' : '#888');
+      ctx.font = '700 11px "Chakra Petch"';
+      ctx.fillText(bt.maxed ? 'МАКС' : ('⚡' + bt.cost), bt.x + bt.w - 8, bt.y + 15);
+    }
+    ctx.textAlign = 'center';
+  }
+  ctx.restore();
+}
+
 function drawBackground() {
   /* Статичная поверхность (земля) — город начинается из кратеров выстрелов */
   if (!_surfCvs) {
@@ -3157,6 +3453,9 @@ function drawBackground() {
 
   /* Динамическое освещение смога от взрывов и снарядов */
   drawSmogLighting();
+
+  /* Электростанции, провода с током, мерцание — часть мира (под облаками) */
+  drawCityWorld();
 }
 
 /* Облака рисуются отдельно ПОВЕРХ врагов — см. render() */
@@ -3461,7 +3760,7 @@ function drawAimLine() {
 
   /* Вычисляем скорость снаряда как при выстреле */
   var dragMax = state.waveActive ? 14 : CFG.DRAG_MAX;
-  var maxVel = 18 + state.colonyTier * 2;
+  var maxVel = 18 + cityAgg().plant;
   var speed = Math.min(dist * CFG.VEL_FACTOR, maxVel);
 
   /* Damping как при выстреле */
@@ -4234,11 +4533,12 @@ function showWaveText(text) {
 function buildAmmoBar() {
   var bar = document.getElementById('ammo-bar');
   bar.innerHTML = '';
+  var sciLvl = cityAgg().sci;
   AMMO.forEach(function(a, i) {
-    var unlocked = state.colonyTier >= a.tierReq;
+    var unlocked = sciLvl >= a.tierReq;
     var btn = document.createElement('div');
     btn.className = 'ammo-btn' + (i === state.selectedAmmo ? ' active' : '') + (!unlocked ? ' locked' : '');
-    btn.title = a.name + (unlocked ? '' : ' (нужен: ' + COLONY_TIERS[a.tierReq].name + ')');
+    btn.title = a.name + (unlocked ? '' : ' (наука ур.' + a.tierReq + ')');
 
     /* Создаём canvas превью — плазменные молнии */
     var previewCvs = document.createElement('canvas');
@@ -4406,6 +4706,7 @@ function resetGame() {
   _surfCvs = null;
   cityQueue = [];
   cityFrozen = [];
+  cityCraters = [];
   destructionCraters = [];
   explosionBolts = [];
   cityTier = -1;
