@@ -369,6 +369,53 @@ var AMMO = [
 ];
 var COLONY_SHOT_COST = 200;
 
+/* ═══════════════ ЗВУК (синтез Web Audio, без ассетов, отключаемый) ═══════════════
+   Короткие синтезированные SFX. Контекст создаётся лениво и разблокируется по
+   первому касанию (autoplay-политика). Клавиша M / кнопка — мьют. */
+var AUDIO = (function () {
+  var ctx = null, master = null, muted = false, lastTurret = 0;
+  function ensure() {
+    if (ctx) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0.22; master.connect(ctx.destination);
+    } catch (e) { ctx = null; }
+  }
+  function tone(freq, dur, type, vol, slideTo) {
+    if (!ctx || muted) return;
+    var t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type || 'square'; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+    g.gain.setValueAtTime(Math.max(0.0001, vol || 0.3), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noise(dur, vol, cutoff) {
+    if (!ctx || muted) return;
+    var t = ctx.currentTime, len = Math.floor(ctx.sampleRate * dur);
+    var b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    var n = ctx.createBufferSource(); n.buffer = b;
+    var f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff || 1400;
+    var g = ctx.createGain(); g.gain.setValueAtTime(vol || 0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(f); f.connect(g); g.connect(master); n.start(t); n.stop(t + dur + 0.02);
+  }
+  return {
+    unlock: function () { ensure(); if (ctx && ctx.state === 'suspended') ctx.resume(); },
+    toggle: function () { muted = !muted; if (!muted) this.unlock(); return muted; },
+    isMuted: function () { return muted; },
+    shot: function (ch) { tone(300 + (ch || 0) * 300, 0.12, 'sawtooth', 0.20, 120); },
+    turret: function () { var now = (state && state.time) || 0; if (now - lastTurret < 0.05) return; lastTurret = now; tone(920, 0.05, 'square', 0.10, 380); },
+    explosion: function (p) { noise(0.32 * (0.6 + (p || 0.5)), 0.32, 1100); tone(95, 0.28, 'sine', 0.18, 42); },
+    death: function () { tone(190, 0.09, 'triangle', 0.10, 85); },
+    city: function () { tone(330, 0.16, 'sine', 0.20, 620); setTimeout(function () { tone(660, 0.22, 'sine', 0.16, 990); }, 130); },
+    wave: function (night) { tone(night ? 150 : 210, 0.5, 'sawtooth', 0.16, night ? 120 : 170); },
+    charge: function () { tone(220, 0.04, 'sine', 0.05, 280); }
+  };
+})();
+
 /* ═══════════════ ENEMY DEFS ═══════════════ */
 var E_TYPES = {
   armor:     { name:'ТАНК',       sides:4, r:0.46, hp:[3,5,8],    speed:1.15, color:'#5b7a8c', pts:25, nrg:12, special:'plated', plates:1 },
@@ -938,6 +985,7 @@ function foundCity(sx, sy) {
     cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
   }
   showWaveText('🏙 НОВЫЙ ГОРОД');
+  AUDIO.city();
   buildAmmoBar();
 }
 
@@ -1053,6 +1101,7 @@ function updateWallTurrets(dt) {
     best.hp -= dmg; best.flashTimer = 0.1;
     state.lightningArcs.push({ x1: wx, y1: wy, x2: bp.x, y2: bp.y, life: 0.18 });
     spawnElectricSparks(bp.x, bp.y, '#37e0ff', 4);
+    AUDIO.turret();
     if (agg.tok >= 2) igniteEnemy(best);
     if (best.hp <= 0) killEnemy(best);
   }
@@ -1145,6 +1194,7 @@ function updateTurrets(dt) {
     best.hp -= dmg; best.flashTimer = 0.1;
     state.lightningArcs.push({ x1: cwx, y1: cwy, x2: bp.x, y2: bp.y, life: 0.18 });
     spawnElectricSparks(bp.x, bp.y, '#37e0ff', 4);
+    AUDIO.turret();
     if (agg.tok >= 2) igniteEnemy(best);
     if (best.hp <= 0) killEnemy(best);
     c.flicker = 0.3; c.feed = 0.5;
@@ -1699,6 +1749,7 @@ function doFire(lhx,lhy,nx,ny,speed,charge,ammoIdx){
   /* Базовый выстрел сразу */
   fireProjectile(lhx,lhy-0.6,nx,ny,speed,charge,ammoIdx);
   dischargeCities();
+  AUDIO.shot(Math.min(1, charge / CFG.MAX_CHARGE));
   /* Мультивыстрел: доп. параллельные снаряды веером (не для колонии) */
   var msLvl = perkLvl('multishot');
   if (msLvl > 0 && !(AMMO[ammoIdx] && AMMO[ammoIdx].colony)) {
@@ -1973,6 +2024,7 @@ function killEnemy(e) {
   e.deathTimer = 0.45;
   state.score += e.def.pts;
   state.energy += e.def.nrg;
+  AUDIO.death();
   var p = e.body.getPosition();
   spawnDeathParticles(p.x, p.y, e.def.color, e.def.r * 14);
   /* Бочка топлива: огненный взрыв при гибели */
@@ -2269,6 +2321,7 @@ function spawnElectricSparks(x, y, color, n) {
 function spawnPlasmaExplosion(x, y, color, n, charge) {
   /* charge от 0 до 1, по умолчанию 0.5 */
   if (charge === undefined) charge = 0.5;
+  AUDIO.explosion(charge);
   var chargeMult = 0.5 + charge * 1.5; /* 0.5-2.0 в зависимости от заряда */
 
   /* Визуально в 4 раза мощнее, масштабируется от заряда */
@@ -2399,6 +2452,7 @@ function startWave() {
   var rested = state.restBonus || 0;
   var boostTxt = rested > 0.005 ? '  +' + Math.round(rested * 100) + '% ⚔' : '';
 
+  AUDIO.wave(isNight);
   /* Попап смены дня/ночи + анонс волны (с названием секвенции) */
   var seqName = (WAVE_SEQUENCES[waveIdx] || {}).name || '';
   var seqTag = seqName ? (' · ' + seqName) : '';
@@ -2474,6 +2528,7 @@ function initInput() {
   }
   function onDown(e) {
     if (state.gameOver) return;
+    AUDIO.unlock(); /* разблокировать звук по первому касанию (autoplay) */
     var p = getPos(e);
     /* Сначала — тап по иконкам/панели прокачки городов */
     if (cityHitTest(p.x * scale, p.y * scale)) { e.preventDefault && e.preventDefault(); return; }
@@ -2550,6 +2605,13 @@ function initInput() {
   canvas.addEventListener('touchstart', onDown, { passive: false });
   canvas.addEventListener('touchmove', onMove, { passive: false });
   canvas.addEventListener('touchend', onUp);
+  /* Мьют звука — клавиша M */
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'm' || e.key === 'M' || e.key === 'ь') {
+      var m = AUDIO.toggle();
+      showWaveText(m ? '🔇 ЗВУК ВЫКЛ' : '🔊 ЗВУК ВКЛ');
+    }
+  });
 }
 
 /* ═══════════════ UPDATE ═══════════════ */
@@ -3257,6 +3319,7 @@ function createShotCrater(worldX, worldY, charge) {
     buildAmmoBar(); /* базовый снаряд открылся */
     tutFinish();
     showWaveText('☣️ FIRST COLONY ☢️' + (tutBonus > 0 ? ' ⚡+' + tutBonus : ''));
+    AUDIO.city();
     /* Начать город из этого кратера */
     var numRays = 3 + Math.floor(Math.random() * 4);
     for (var ri = 0; ri < numRays; ri++) {
