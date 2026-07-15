@@ -891,7 +891,7 @@ var CITY_UPGRADES = [
   { key:'sci',   icon:'🔬', name:'НАУКА',          max:4, base:30, step:26 }, /* бонусы снарядам + новые боеприпасы */
   { key:'cap',   icon:'🔋', name:'ГИГАКОНДЕНСАТОР',max:3, base:50, step:45 }  /* доп. выстрел с задержкой */
 ];
-var SCI_PERK_ORDER = ['chain_lightning','crit','fast_charge','range','tesla','vortex','overcharge','singularity'];
+var SCI_PERK_ORDER = ['chain_lightning','crit','fast_charge','range','tesla','vortex','shield_gen','overcharge','singularity','multishot'];
 /* Спец-постройки города (в панели после 4 базовых) */
 var CITY_SPECIAL = {
   turret: { key:'turret', icon:'🔫', name:'ТУРРЕЛЬ',  max:3, base:40,  step:40  }, /* авто-стрельба по врагам */
@@ -1696,6 +1696,16 @@ function doFire(lhx,lhy,nx,ny,speed,charge,ammoIdx){
   /* Базовый выстрел сразу */
   fireProjectile(lhx,lhy-0.6,nx,ny,speed,charge,ammoIdx);
   dischargeCities();
+  /* Мультивыстрел: доп. параллельные снаряды веером (не для колонии) */
+  var msLvl = perkLvl('multishot');
+  if (msLvl > 0 && !(AMMO[ammoIdx] && AMMO[ammoIdx].colony)) {
+    var baseAng = Math.atan2(ny, nx), spread = 0.10;
+    for (var msi = 1; msi <= msLvl; msi++) {
+      var off = (msi % 2 === 1 ? 1 : -1) * Math.ceil(msi / 2) * spread;
+      var a2 = baseAng + off;
+      fireProjectile(lhx, lhy - 0.6, Math.cos(a2), Math.sin(a2), speed, charge * 0.85, ammoIdx);
+    }
+  }
   /* Гигаконденсаторы/города дают бонусные выстрелы В ТОМ ЖЕ направлении, с задержкой.
      Сила конденсаторов усиливает заряд бонусных снарядов.
      Токамаки (по номеру) задают ТИП k-го бонусного выстрела — комбо-очередь. */
