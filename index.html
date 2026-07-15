@@ -441,93 +441,109 @@ function expandFormations(seq) {
   return out;
 }
 
-/* ── Генераторы боевых композиций (возвращают массивы нот) ──
-   Позволяют собирать «римские» построения: шеренги, клин, фаланга-черепаха,
-   окружение, охраняемая пачка — без ручного перечисления сотен нот. */
+/* ── Генераторы боевых ФИГУР (возвращают массивы нот) ──
+   Враги идут построениями (шеренга/клин/ранги/фаланга/окружение/колонна),
+   а не хаотичными пачками. Последний параметр spd — множитель скорости
+   фигуры (можно пускать быстрые дозоры и медленные колонны в одной волне). */
 function _spread(count, a, b) {
   a = (a === undefined) ? 0.12 : a; b = (b === undefined) ? 0.88 : b;
   var xs = []; if (count <= 1) return [(a + b) / 2];
   for (var i = 0; i < count; i++) xs.push(a + (b - a) * (i / (count - 1)));
   return xs;
 }
-/* Шеренга — враги в линию по всей ширине */
-function bLine(t, type, count, level) {
+function _stamp(o, spd) { if (spd && spd !== 1) for (var i = 0; i < o.length; i++) o[i].spd = spd; return o; }
+/* Шеренга — линия по ширине */
+function bLine(t, type, count, level, spd) {
   var o = [], xs = _spread(count);
   for (var i = 0; i < count; i++) o.push({ t: t, type: type, x: xs[i], level: level || 0 });
-  return o;
+  return _stamp(o, spd);
 }
 /* Клин (V) — центр впереди, фланги отстают */
-function bVee(t, type, count, level) {
+function bVee(t, type, count, level, spd) {
   var o = [], half = (count - 1) / 2;
   for (var i = 0; i < count; i++) { var d = i - half; o.push({ t: t + Math.abs(d) * 0.12, type: type, x: 0.5 + d * 0.06, level: level || 0 }); }
-  return o;
+  return _stamp(o, spd);
 }
-/* Шеренги-ранги — files столбцов × ranks рядов, ряды входят с задержкой */
-function bRanks(t, type, files, ranks, level, dtGap) {
+/* Ранги — files столбцов × ranks рядов, ряды входят с задержкой */
+function bRanks(t, type, files, ranks, level, dtGap, spd) {
   var o = [], xs = _spread(files, 0.2, 0.8); dtGap = dtGap || 0.5;
   for (var r = 0; r < ranks; r++) for (var f = 0; f < files; f++) o.push({ t: t + r * dtGap, type: type, x: xs[f], level: level || 0 });
-  return o;
+  return _stamp(o, spd);
 }
-/* Фаланга-черепаха — плотный прямоугольник, по краям щитоносцы (edge), внутри core */
-function bPhalanx(t, core, edge, files, ranks, level, dtGap) {
+/* Фаланга-черепаха — прямоугольник, по краям щитоносцы (edge), внутри core */
+function bPhalanx(t, core, edge, files, ranks, level, dtGap, spd) {
   var o = [], xs = _spread(files, 0.24, 0.76); dtGap = dtGap || 0.45;
   for (var r = 0; r < ranks; r++) for (var f = 0; f < files; f++) {
     var isEdge = (f === 0 || f === files - 1);
     o.push({ t: t + r * dtGap, type: isEdge ? edge : core, x: xs[f], level: level || 0 });
   }
-  return o;
+  return _stamp(o, spd);
 }
-/* Окружение — враги по краям карты + немного по центру */
-function bSurround(t, type, count, level) {
+/* Окружение — по краям карты + немного по центру */
+function bSurround(t, type, count, level, spd) {
   var o = [];
   for (var i = 0; i < count; i++) {
     var x = (i % 3 === 0) ? (0.1 + Math.random() * 0.8) : (Math.random() < 0.5 ? 0.02 + Math.random() * 0.2 : 0.78 + Math.random() * 0.2);
     o.push({ t: t + Math.random() * 1.5, type: type, x: x, level: level || 0 });
   }
-  return o;
+  return _stamp(o, spd);
 }
-/* Пачка — лидер по центру, эскорт кольцом вокруг */
-function bPack(t, leader, lvl, escort, n, elvl) {
-  var o = [{ t: t, type: leader, x: 0.5, level: lvl || 0 }];
-  for (var i = 0; i < n; i++) { var a = (i / n) * TAU; o.push({ t: t + 0.15, type: escort, x: 0.5 + Math.cos(a) * 0.12, level: elvl || 0 }); }
-  return o;
+/* Колонна — тяжёлый лидер впереди по центру, эскорт КОЛОННОЙ позади (фигура) */
+function bColumn(t, heavy, hlvl, escort, n, spd) {
+  var o = [{ t: t, type: heavy, x: 0.5, level: hlvl || 0 }];
+  for (var i = 0; i < n; i++) {
+    var side = (i % 2 ? 1 : -1), row = 1 + Math.floor(i / 2);
+    o.push({ t: t + row * 0.35, type: escort, x: 0.5 + side * 0.05 * Math.ceil((i + 1) / 2), level: 0 });
+  }
+  return _stamp(o, spd);
 }
 function bCat() { var o = []; for (var i = 0; i < arguments.length; i++) o = o.concat(arguments[i]); return o; }
 
 /* ═══════════════ WAVE SEQUENCES ═══════════════
-   10 разнообразных секвенций с нарастающей сложностью; поздние волны вводят
-   тяжёлые юниты (танк, генерал) и завершаются ДЖАГГЕРНАУТАМИ (самый большой юнит). */
+   10 «дней» с нарастающей сложностью. Новые юниты вводятся уже в первые дни,
+   тяжёлый танк — на 2-й день; фокус каждой волны свой. spd задаёт разные
+   скорости фигур в одной волне. Финал — ДЖАГГЕРНАУТЫ. */
 var WAVE_SEQUENCES = [
-  { id: 'w01_patrol', name: 'Дозор', duration: 22,
-    notes: bCat(bLine(0.5, 'armor', 5), bLine(3, 'armor', 5), bLine(6, 'soldier', 5), bRanks(9.5, 'armor', 5, 2, 0, 0.6), bPack(14, 'barrel', 0, 'armor', 6)),
+  /* День 1 — знакомство: солдаты и танки-плитки чистыми шеренгами. */
+  { id: 'w01_first', name: 'Первый контакт', duration: 22,
+    notes: bCat(bLine(0.5, 'soldier', 5), bRanks(3, 'armor', 5, 2, 0, 0.6), bLine(9, 'soldier', 6), bVee(13, 'armor', 7, 0, 1.15)),
     formations: [], modifiers: { hpMult: 1.0 } },
-  { id: 'w02_ranks', name: 'Шеренги', duration: 24,
-    notes: bCat(bRanks(0.5, 'soldier', 6, 3, 0, 0.5), bLine(6, 'armor', 6), bRanks(9, 'soldier', 6, 2, 0, 0.5), bLine(13, 'berserker', 4)),
-    formations: [], modifiers: { hpMult: 1.05 } },
-  { id: 'w03_wedge', name: 'Клин', duration: 24,
-    notes: bCat(bVee(0.5, 'berserker', 7), bLine(4, 'armor', 6), bVee(8, 'soldier', 9), bPack(13, 'barrel', 0, 'soldier', 6)),
-    formations: [], modifiers: { hpMult: 1.1 } },
-  { id: 'w04_phalanx', name: 'Фаланга', duration: 26,
-    notes: bCat(bPhalanx(0.5, 'soldier', 'armor', 6, 3, 0, 0.5), bPhalanx(8, 'soldier', 'armor', 6, 3, 0, 0.5), bLine(15, 'berserker', 5)),
+  /* День 2 — ТЯЖЁЛЫЙ УДАР: танк-колонна (супертяжёлый рано) + бочки. */
+  { id: 'w02_heavy', name: 'Тяжёлый удар', duration: 26,
+    notes: bCat(bColumn(1, 'tank', 0, 'soldier', 8), bLine(6, 'armor', 6, 0, 1.1), bColumn(11, 'barrel', 0, 'armor', 6), bVee(16, 'soldier', 7)),
+    formations: [], modifiers: { hpMult: 1.06 } },
+  /* День 3 — ЯРОСТЬ: быстрый клин берсерков + лекари + фаланга. */
+  { id: 'w03_fury', name: 'Ярость', duration: 26,
+    notes: bCat(bVee(0.5, 'berserker', 7, 0, 1.35), bLine(4, 'healer', 3), bPhalanx(7, 'soldier', 'armor', 6, 3, 0, 0.45), bVee(15, 'berserker', 7, 0, 1.35)),
     formations: [], modifiers: { hpMult: 1.12 } },
-  { id: 'w05_armor_push', name: 'Танковый удар', duration: 26,
-    notes: bCat(bPack(1, 'tank', 0, 'armor', 8), bSurround(4, 'soldier', 10), bLine(10, 'armor', 7), bPack(15, 'tank', 0, 'armor', 6)),
-    formations: [], modifiers: { hpMult: 1.15 } },
-  { id: 'w06_general', name: 'Генерал', duration: 28,
-    notes: bCat(bPack(1, 'general', 0, 'soldier', 8), bPhalanx(6, 'soldier', 'armor', 7, 3, 0, 0.45), bLine(14, 'berserker', 6), bPack(18, 'barrel', 0, 'armor', 6)),
-    formations: [], modifiers: { hpMult: 1.18 } },
-  { id: 'w07_barrels', name: 'Огненный вал', duration: 28,
-    notes: bCat(bPack(1, 'barrel', 0, 'armor', 6), bPack(4, 'barrel', 0, 'armor', 6), bVee(8, 'berserker', 9), bPack(12, 'barrel', 0, 'soldier', 6), bSurround(16, 'soldier', 12)),
+  /* День 4 — ГЕНЕРАЛ: генерал-колонна под щитом + фаланга. */
+  { id: 'w04_general', name: 'Генерал', duration: 28,
+    notes: bCat(bColumn(1, 'general', 0, 'soldier', 10), bPhalanx(6, 'soldier', 'armor', 7, 3, 0, 0.45), bLine(15, 'berserker', 6, 0, 1.3), bColumn(19, 'barrel', 0, 'armor', 5)),
+    formations: [], modifiers: { hpMult: 1.16 } },
+  /* День 5 — КОРПУС: наземные халфтраки идут к городам + танк + окружение. */
+  { id: 'w05_corps', name: 'Корпус', duration: 28,
+    notes: bCat(bLine(1, 'halftrack', 2), bColumn(4, 'tank', 0, 'soldier', 8), bSurround(9, 'soldier', 12), bLine(15, 'halftrack', 1), bLine(20, 'armor', 7, 0, 1.15)),
     formations: [], modifiers: { hpMult: 1.2 } },
-  { id: 'w08_healers', name: 'Лекари и танки', duration: 30,
-    notes: bCat(bPack(1, 'tank', 0, 'armor', 6), bLine(4, 'healer', 4), bPack(8, 'tank', 0, 'soldier', 8), bSurround(12, 'soldier', 14), bLine(18, 'healer', 4)),
-    formations: [], modifiers: { hpMult: 1.22 } },
-  { id: 'w09_siege', name: 'Осада', duration: 32,
-    notes: bCat(bPack(1, 'general', 0, 'armor', 8), bPhalanx(5, 'soldier', 'armor', 8, 3, 0, 0.4), bLine(9, 'halftrack', 2), bSurround(12, 'berserker', 12), bPack(16, 'tank', 0, 'soldier', 8), bLine(22, 'healer', 4)),
-    formations: [], modifiers: { hpMult: 1.25 } },
-  { id: 'w10_juggernaut', name: 'ДЖАГГЕРНАУТ', duration: 36,
-    notes: bCat(bLine(1, 'juggernaut', 2), bLine(5, 'halftrack', 3), bLine(8, 'juggernaut', 2), bPack(12, 'general', 0, 'soldier', 10), bSurround(15, 'soldier', 18), bLine(21, 'healer', 6), bSurround(25, 'berserker', 12)),
-    formations: [], modifiers: { hpMult: 1.3 } },
+  /* День 6 — ФАЛАНГА: большая черепаха + берсерки по флангам. */
+  { id: 'w06_phalanx', name: 'Фаланга', duration: 30,
+    notes: bCat(bPhalanx(1, 'soldier', 'armor', 8, 4, 0, 0.4), bVee(9, 'berserker', 9, 0, 1.35), bColumn(14, 'tank', 0, 'armor', 8), bSurround(20, 'soldier', 12)),
+    formations: [], modifiers: { hpMult: 1.24 } },
+  /* День 7 — КЛИНЬЯ: несколько клиньев с разной скоростью + бочки. */
+  { id: 'w07_wedges', name: 'Клинья', duration: 30,
+    notes: bCat(bVee(1, 'soldier', 9), bVee(3, 'berserker', 9, 0, 1.4), bVee(6, 'armor', 9, 0, 1.15), bColumn(11, 'barrel', 0, 'soldier', 6), bColumn(15, 'barrel', 0, 'armor', 6), bSurround(20, 'berserker', 10, 0, 1.3)),
+    formations: [], modifiers: { hpMult: 1.28 } },
+  /* День 8 — ЛЕКАРИ: живучие колонны с лекарями. */
+  { id: 'w08_healers', name: 'Лекари', duration: 32,
+    notes: bCat(bColumn(1, 'tank', 0, 'soldier', 8), bLine(4, 'healer', 4), bColumn(9, 'tank', 1, 'armor', 8), bSurround(14, 'soldier', 14), bLine(20, 'healer', 4), bVee(24, 'berserker', 8, 0, 1.35)),
+    formations: [], modifiers: { hpMult: 1.32 } },
+  /* День 9 — ОСАДА: генерал + фаланга + халфтраки + танки. */
+  { id: 'w09_siege', name: 'Осада', duration: 34,
+    notes: bCat(bColumn(1, 'general', 0, 'armor', 10), bPhalanx(5, 'soldier', 'armor', 8, 4, 0, 0.4), bLine(10, 'halftrack', 2), bSurround(14, 'berserker', 12, 0, 1.3), bColumn(19, 'tank', 1, 'soldier', 8), bLine(26, 'healer', 4)),
+    formations: [], modifiers: { hpMult: 1.36 } },
+  /* День 10 — ДЖАГГЕРНАУТ: финал. */
+  { id: 'w10_juggernaut', name: 'ДЖАГГЕРНАУТ', duration: 38,
+    notes: bCat(bLine(1, 'juggernaut', 1), bLine(5, 'halftrack', 2), bColumn(8, 'juggernaut', 2, 'armor', 8), bColumn(13, 'general', 0, 'soldier', 10), bSurround(17, 'soldier', 16), bLine(23, 'healer', 6), bSurround(27, 'berserker', 12, 0, 1.35)),
+    formations: [], modifiers: { hpMult: 1.4 } },
 ];
 
 /* ═══════════════ GAME STATE ═══════════════ */
@@ -879,6 +895,11 @@ function freshState() {
 }
 function perkLvl(id){ return state.perks[id]||0; }
 /* ═══════════════ ГОРОДА И ИХ ПРОКАЧКА ═══════════════ */
+/* Глобальный множитель ВСЕХ цен. Базовые числа в defs не трогаем — множим их
+   здесь. Меняя PRICE_MULT по этапам, масштабируем экономику одной ручкой.
+   Пока: +40% ко всему (1.4). */
+var PRICE_MULT = 1.4;
+function priced(n) { return Math.round(n * PRICE_MULT); }
 var CITY_FOUND_COST = 80;
 var CITY_UPGRADES = [
   { key:'plant', icon:'⚡', name:'ЭЛЕКТРОСТАНЦИЯ', max:5, base:20, step:14 }, /* +заряд/урон, провода с током */
@@ -946,7 +967,7 @@ function buyCityUpgrade(city, key) {
   if (key === 'tok' && !tokamakReady(city)) return; /* токамак — только когда всё по 2 */
   var lvl = city.up[key] || 0;
   if (lvl >= u.max) return;
-  var cost = u.base + u.step * lvl;
+  var cost = priced(u.base + u.step * lvl);
   if (state.energy < cost) return;
   state.energy -= cost; city.up[key] = lvl + 1;
   if (key === 'tok' && lvl === 0) city.tokNum = ++state.tokCounter; /* закрепляем номер токамака за городом */
@@ -974,12 +995,12 @@ function wallPanelButtons(w) {
   var u = WALL_TURRET, lvl = w.up.turret || 0, s = wallScreen(w);
   var bw = 168, bh = 28, bx = (s.x < W / 2) ? s.x + 20 : s.x - 20 - bw, by = s.y - 92;
   if (bx < 6) bx = 6; if (bx + bw > W - 6) bx = W - 6 - bw; if (by < 44) by = 44;
-  var cost = u.base + u.step * lvl;
+  var cost = priced(u.base + u.step * lvl);
   return [{ x:bx, y:by, w:bw, h:bh, def:u, level:lvl, maxed:lvl >= u.max, cost:cost, afford: state.energy >= cost }];
 }
 function buyWallUpgrade(w) {
   var u = WALL_TURRET, lvl = w.up.turret || 0; if (lvl >= u.max) return;
-  var cost = u.base + u.step * lvl; if (state.energy < cost) return;
+  var cost = priced(u.base + u.step * lvl); if (state.energy < cost) return;
   state.energy -= cost; w.up.turret = lvl + 1; updateHUD();
 }
 /* Крепости + их турели в мировом слое (под облаками) */
@@ -1224,7 +1245,7 @@ function cityPanelButtons(city) {
   if (by + N * (bh + gap) > H - 24) by = H - 24 - N * (bh + gap);
   var out = [];
   for (var i = 0; i < N; i++) {
-    var u = list[i], lvl = city.up[u.key] || 0, maxed = lvl >= u.max, cost = u.base + u.step * lvl;
+    var u = list[i], lvl = city.up[u.key] || 0, maxed = lvl >= u.max, cost = priced(u.base + u.step * lvl);
     var locked = (u.key === 'tok') && !tokamakReady(city);
     out.push({ x: bx, y: by + i * (bh + gap), w: bw, h: bh, def: u, level: lvl, maxed: maxed, cost: cost, afford: state.energy >= cost, locked: locked });
   }
@@ -1292,13 +1313,6 @@ function cityHitTest(sx, sy) {
     var r = cityIconRect(state.cities[c]);
     if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; state.tokMenu = -1; state.activeWall = -1; return true; }
   }
-  for (var s = 0; s < state.foundSites.length; s++) {
-    var fr = foundIconRect(state.foundSites[s]);
-    if (sx >= fr.x && sx <= fr.x + fr.w && sy >= fr.y && sy <= fr.y + fr.h) {
-      if (state.energy >= CITY_FOUND_COST) { state.energy -= CITY_FOUND_COST; foundCity(state.foundSites[s].x, state.foundSites[s].y); state.foundSites.splice(s, 1); updateHUD(); }
-      return true;
-    }
-  }
   return false;
 }
 
@@ -1353,8 +1367,9 @@ function makePolygonVerts(sides, r) {
 }
 
 /* ═══════════════ ENEMY CREATION ═══════════════ */
-function spawnEnemy(type, x, y, level) {
+function spawnEnemy(type, x, y, level, speedMult) {
   if (typeof level === 'undefined') level = 0; /* default: Lv.0 Обычный */
+  if (typeof speedMult === 'undefined') speedMult = 1; /* множитель скорости из ноты */
   var def = E_TYPES[type];
   if (!def) return;
   var body = world.createBody({
@@ -1404,6 +1419,7 @@ function spawnEnemy(type, x, y, level) {
     def: def,
     level: level, /* 0=Обычный, 1=Ветеран, 2=Элита */
     levelSpeedMult: levelSpeedMult, /* Применяется в moveEnemy() */
+    noteSpeedMult: speedMult, /* скорость фигуры из ноты (разная у построений) */
     hp: baseHp * hpMult * levelHpMult,
     maxHp: baseHp * hpMult * levelHpMult,
     shielded: false,
@@ -2137,7 +2153,7 @@ function spawnEnemyFromNote(note) {
 
   /* group — пока не используем */
 
-  spawnEnemy(note.type, worldX, worldY, level);
+  spawnEnemy(note.type, worldX, worldY, level, note.spd || 1);
 }
 
 /* ═══════════════ DEFERRED BODY PROCESSING ═══════════════ */
@@ -2408,16 +2424,16 @@ function startWave() {
   var seq = WAVE_SEQUENCES[waveIdx];
   var expandedNotes = expandFormations(seq);
 
-  /* ×2 численность врагов — дублируем ноты (кроме тяжёлых боссов, чтобы не
-     превращать их в неубиваемую стену). Дубль слегка смещён по x и t. */
+  /* ×2 численность врагов — дублируем ноты ВТОРЫМ РЯДОМ позади (тот же x, чуть
+     позже по времени), чтобы фигуры оставались фигурами, а не хаотичной кашей.
+     Тяжёлые боссы не дублируются (иначе стена). */
   var HEAVY_DUP = { juggernaut: true, tank: true, general: true, halftrack: true };
   var doubled = [];
   for (var dbi = 0; dbi < expandedNotes.length; dbi++) {
     var dn = expandedNotes[dbi];
     doubled.push(dn);
     if (!HEAVY_DUP[dn.type]) {
-      var djx = Math.min(0.96, Math.max(0.04, dn.x + (Math.random() - 0.5) * 0.09));
-      doubled.push({ t: dn.t + 0.25, type: dn.type, x: djx, y: dn.y, level: dn.level, group: dn.group });
+      doubled.push({ t: dn.t + 0.5, type: dn.type, x: dn.x, y: dn.y, level: dn.level, group: dn.group, spd: dn.spd });
     }
   }
   doubled.sort(function(a, b){ return a.t - b.t; });
@@ -2507,7 +2523,7 @@ function initInput() {
       var nx = dx / dist, ny = dy / dist;
       if (isColonyAmmo) {
         /* Первый город бесплатно, дальше 200 энергии за выстрел */
-        var cost = state.firstColony ? COLONY_SHOT_COST : 0;
+        var cost = state.firstColony ? priced(COLONY_SHOT_COST) : 0;
         if (state.energy < cost) { showWaveText('⚡ НУЖНО ' + cost); state.charge = 0; return; }
         /* Колония НЕ зависит от прокачки: фиксированная скорость (без бонуса станций)
            и фиксированный заряд — чтобы снаряд всегда приземлялся предсказуемо и
@@ -2820,7 +2836,7 @@ function update(dt) {
 
     ep = e.body.getPosition();
     /* ФАЗА 12: Применяем множитель уровня к скорости */
-    var targetSpeed = e.def.speed * speedMul * (e.levelSpeedMult || 1.0);
+    var targetSpeed = e.def.speed * speedMul * (e.levelSpeedMult || 1.0) * (e.noteSpeedMult || 1.0);
     var mass = e.body.getMass();
 
     var fy = targetSpeed * CFG.ENEMY_DAMPING * mass;
@@ -3249,38 +3265,13 @@ function createShotCrater(worldX, worldY, charge) {
       cityQueue.push({ type:'line', x:sx, y:sy, a:(ri/numRays)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
     }
   } else {
-    /* Последующие кратеры основывают новый город — запекаем ПОД город (как первый),
-       чтобы z-order и стиль совпадали с первым кратером. */
+    /* Запекаем кратер под город (единый стиль/порядок с первым). */
     drawCraterOnCtx(_surfCtx, sx, sy, cr);
-
-    /* Достаточно крупный кратер вдали от городов → место под НОВЫЙ город */
-    if (charge >= 0.4 && cr >= 18) {
-      var farOk = true;
-      for (var ci = 0; ci < state.cities.length; ci++) {
-        var cc = state.cities[ci], ddx = cc.x - sx, ddy = cc.y - sy;
-        if (ddx * ddx + ddy * ddy < 95 * 95) { farOk = false; break; }
-      }
-      for (var fi2 = 0; farOk && fi2 < state.foundSites.length; fi2++) {
-        var fs = state.foundSites[fi2], fdx = fs.x - sx, fdy = fs.y - sy;
-        if (fdx * fdx + fdy * fdy < 70 * 70) { farOk = false; break; }
-      }
-      if (farOk && state.foundSites.length < 4) state.foundSites.push({ x: sx, y: sy });
-    }
-
-    /* Остановить строительство города */
-    cityQueue.length = 0;
-
-    /* Затухнуть существующий город (не исчезает полностью) */
-    for (var fi = 0; fi < cityFrozen.length; fi++) {
-      if (!cityFrozen[fi].fade) cityFrozen[fi].fade = 0;
-      cityFrozen[fi].fade = Math.max(cityFrozen[fi].fade, 0.3); /* затухает до 30% */
-    }
-
-    /* Начать новый рост из нового кратера */
-    var numRays2 = 3 + Math.floor(Math.random() * 4);
-    for (var ri2 = 0; ri2 < numRays2; ri2++) {
-      cityQueue.push({ type:'line', x:sx, y:sy, a:(ri2/numRays2)*TAU + rr(0,0.3), l:rr(30,60), th:THICK_THICK, gen:0, prog:0, spd:rr(0.0002, 0.0006) });
-    }
+    /* СОБЫТИЕ основания: снаряд-колония сам создаёт РЕАЛЬНЫЙ город в точке
+       попадания. Никакой кнопки и никакого разрушения прошлых городов —
+       прошлая реализация (freeze + foundSites-кнопка) была источником бага
+       «город рождается, а кнопки нет». */
+    foundCity(sx, sy);
   }
 }
 
@@ -3729,17 +3720,7 @@ function drawCityUI() {
   if (state.waveActive) { state.activeCity = -1; state.tokMenu = -1; state.activeWall = -1; return; } /* в бою прокачка скрыта */
   ctx.save();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  /* места под новый город */
-  for (var s = 0; s < state.foundSites.length; s++) {
-    var st = state.foundSites[s], r = foundIconRect(st);
-    var can = state.energy >= CITY_FOUND_COST;
-    ctx.fillStyle = can ? 'rgba(0,40,20,0.85)' : 'rgba(30,30,30,0.8)';
-    ctx.strokeStyle = can ? '#00e676' : '#556'; ctx.lineWidth = 2;
-    ctx.fillRect(r.x, r.y, r.w, r.h); ctx.strokeRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = can ? '#00e676' : '#889'; ctx.font = '700 10px "Chakra Petch"';
-    ctx.fillText('+ ГОРОД', st.x, r.y + 8);
-    ctx.fillText('⚡' + CITY_FOUND_COST, st.x, r.y + 18);
-  }
+  /* (кнопка «+ГОРОД» удалена — города основывает сам снаряд-колония при попадании) */
   /* иконки прокачки городов */
   for (var i = 0; i < state.cities.length; i++) {
     var c = state.cities[i], ir = cityIconRect(c), open = state.activeCity === i;
@@ -5012,7 +4993,7 @@ function buildAmmoBar() {
 
     /* Подпись: цена колонии / замок / условие */
     var labTxt = '';
-    if (a.colony) labTxt = state.firstColony ? '200⚡' : 'FREE';
+    if (a.colony) labTxt = state.firstColony ? (priced(COLONY_SHOT_COST) + '⚡') : 'FREE';
     else if (a.locked) labTxt = '🔒';
     else if (a.id === 'tesla' && !avail) labTxt = 'токамак';
     if (labTxt) {
