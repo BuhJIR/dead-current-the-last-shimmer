@@ -879,12 +879,14 @@ function freshState() {
   };
 }
 function perkLvl(id){ return state.perks[id]||0; }
+/* ═══════════════ КОНФИГ СЛОЖНОСТИ (одна ручка на баланс) ═══════════════
+   Базовые числа в defs/волнах не трогаем — крутим только эти множители.
+   priceMult    — ВСЕ цены ×N (сейчас +40%).
+   enemyCountMult — во сколько раз больше врагов (целое: 1,2,3…).
+   hpScale      — доп. множитель HP врагов поверх волновых модификаторов. */
+var DIFFICULTY = { priceMult: 1.4, enemyCountMult: 2, hpScale: 1.0 };
+function priced(n) { return Math.round(n * DIFFICULTY.priceMult); }
 /* ═══════════════ ГОРОДА И ИХ ПРОКАЧКА ═══════════════ */
-/* Глобальный множитель ВСЕХ цен. Базовые числа в defs не трогаем — множим их
-   здесь. Меняя PRICE_MULT по этапам, масштабируем экономику одной ручкой.
-   Пока: +40% ко всему (1.4). */
-var PRICE_MULT = 1.4;
-function priced(n) { return Math.round(n * PRICE_MULT); }
 var CITY_UPGRADES = [
   { key:'plant', icon:'⚡', name:'ЭЛЕКТРОСТАНЦИЯ', max:5, base:20, step:14 }, /* +заряд/урон, провода с током */
   { key:'pop',   icon:'👥', name:'НАСЕЛЕНИЕ',      max:3, base:35, step:30 }, /* ×бонус отдыха */
@@ -1013,6 +1015,7 @@ function drawWalls() {
       else tf = 0;
       var tsc = 22 / ((ASSET_DATA[tkey] && ASSET_DATA[tkey].fh) || 80);
       drawSpriteFrame(tkey, tf, s.x, s.y - dsz * 0.55, aa + Math.PI / 2, tsc, 1);
+      turretMuzzle(s.x, s.y - dsz * 0.55, aa, w.up.turret, w.turretFlash);
     }
   }
 }
@@ -2396,12 +2399,14 @@ function startWave() {
   var rested = state.restBonus || 0;
   var boostTxt = rested > 0.005 ? '  +' + Math.round(rested * 100) + '% ⚔' : '';
 
-  /* Попап смены дня/ночи + анонс волны */
+  /* Попап смены дня/ночи + анонс волны (с названием секвенции) */
+  var seqName = (WAVE_SEQUENCES[waveIdx] || {}).name || '';
+  var seqTag = seqName ? (' · ' + seqName) : '';
   if (isNight) {
-    showWaveText('🌙 НОЧЬ // ВОЛНА ' + dayWave + boostTxt);
+    showWaveText('🌙 НОЧЬ ' + dayWave + seqTag + boostTxt);
     state.nightHpMult = 2; /* враги в 2 раза сильнее */
   } else {
-    showWaveText('☀ ДЕНЬ // ВОЛНА ' + dayWave + boostTxt);
+    showWaveText('☀ ДЕНЬ ' + dayWave + seqTag + boostTxt);
     state.nightHpMult = 1;
   }
   /* cloudDarkMult теперь ведёт непрерывный цикл дня/ночи (см. update) */
@@ -2414,16 +2419,19 @@ function startWave() {
   var seq = WAVE_SEQUENCES[waveIdx];
   var expandedNotes = expandFormations(seq);
 
-  /* ×2 численность врагов — дублируем ноты ВТОРЫМ РЯДОМ позади (тот же x, чуть
-     позже по времени), чтобы фигуры оставались фигурами, а не хаотичной кашей.
+  /* Численность врагов ×enemyCountMult — дублируем ноты ДОП. РЯДАМИ позади (тот же
+     x, чуть позже по времени), чтобы фигуры оставались фигурами, а не кашей.
      Тяжёлые боссы не дублируются (иначе стена). */
   var HEAVY_DUP = { juggernaut: true, tank: true, general: true, halftrack: true };
+  var cm = Math.max(1, Math.round(DIFFICULTY.enemyCountMult));
   var doubled = [];
   for (var dbi = 0; dbi < expandedNotes.length; dbi++) {
     var dn = expandedNotes[dbi];
     doubled.push(dn);
     if (!HEAVY_DUP[dn.type]) {
-      doubled.push({ t: dn.t + 0.5, type: dn.type, x: dn.x, y: dn.y, level: dn.level, group: dn.group, spd: dn.spd });
+      for (var rep = 1; rep < cm; rep++) {
+        doubled.push({ t: dn.t + 0.5 * rep, type: dn.type, x: dn.x, y: dn.y, level: dn.level, group: dn.group, spd: dn.spd });
+      }
     }
   }
   doubled.sort(function(a, b){ return a.t - b.t; });
@@ -2445,7 +2453,7 @@ function startWave() {
 
   /* Применяем модификаторы волны */
   var mods = seq.modifiers || {};
-  var hpMult = (mods.hpMult || 1.0) * cycleMult;
+  var hpMult = (mods.hpMult || 1.0) * cycleMult * DIFFICULTY.hpScale;
   if (isNight) hpMult *= 2;
   state.nightHpMult = hpMult;
 
@@ -3257,6 +3265,17 @@ function createShotCrater(worldX, worldY, charge) {
   } else {
     /* Запекаем кратер под город (единый стиль/порядок с первым). */
     drawCraterOnCtx(_surfCtx, sx, sy, cr);
+    /* Не основываем город поверх уже существующего — иначе накладка/спам.
+       Возвращаем энергию за выстрел, чтобы не штрафовать за «мимо». */
+    for (var gci = 0; gci < state.cities.length; gci++) {
+      var gc = state.cities[gci], gdx = gc.x - sx, gdy = gc.y - sy;
+      if (gdx * gdx + gdy * gdy < 62 * 62) {
+        state.energy += priced(COLONY_SHOT_COST);
+        showWaveText('⚠ СЛИШКОМ БЛИЗКО К ГОРОДУ');
+        updateHUD();
+        return;
+      }
+    }
     /* СОБЫТИЕ основания: снаряд-колония сам создаёт РЕАЛЬНЫЙ город в точке
        попадания. Никакой кнопки и никакого разрушения прошлых городов —
        прошлая реализация (freeze + foundSites-кнопка) была источником бага
@@ -3588,6 +3607,18 @@ function drawSpriteFrame(key, frameIdx, cx, cy, angle, scale, anchorY) {
   return true;
 }
 
+/* Вспышка у дула турели в момент выстрела (аддитивная) */
+function turretMuzzle(pvx, pvy, aa, lvl, flash) {
+  if (!(flash > 0)) return;
+  var len = (18 + lvl * 3) * 0.85, a = Math.min(1, flash / 0.12);
+  var tx = pvx + Math.cos(aa) * len, ty = pvy + Math.sin(aa) * len;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = 'rgba(170,235,255,' + (a * 0.8) + ')';
+  ctx.beginPath(); ctx.arc(tx, ty, 2.5 + a * 3.5, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
 /* Города в мире: электростанции, провода с током, мерцание света (под облаками) */
 function drawCityWorld() {
   if (!state.colonized || !state.cities.length) return;
@@ -3692,6 +3723,7 @@ function drawCityWorld() {
         ctx.fillStyle = '#8fd0ff'; ctx.fillRect(0, -1.4, 8 + tlvl * 2, 2.8);
         ctx.restore();
       }
+      turretMuzzle(pvx, pvy, aa, tlvl, c.turretFlash);
     }
     /* мерцание света в городе (гаснет частями) */
     if (c.flicker > 0.02) {
