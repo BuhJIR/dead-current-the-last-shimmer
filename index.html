@@ -373,7 +373,9 @@ var COLONY_SHOT_COST = 200;
    Короткие синтезированные SFX. Контекст создаётся лениво и разблокируется по
    первому касанию (autoplay-политика). Клавиша M / кнопка — мьют. */
 var AUDIO = (function () {
-  var ctx = null, master = null, muted = false, lastTurret = 0;
+  var ctx = null, master = null, lastTurret = 0;
+  var muted = false;
+  try { muted = localStorage.getItem('dc_muted') === '1'; } catch (e) { /* no storage */ }
   function ensure() {
     if (ctx) return;
     try {
@@ -404,7 +406,7 @@ var AUDIO = (function () {
   }
   return {
     unlock: function () { ensure(); if (ctx && ctx.state === 'suspended') ctx.resume(); },
-    toggle: function () { muted = !muted; if (!muted) this.unlock(); return muted; },
+    toggle: function () { muted = !muted; try { localStorage.setItem('dc_muted', muted ? '1' : '0'); } catch (e) {} if (!muted) this.unlock(); return muted; },
     isMuted: function () { return muted; },
     shot: function (ch) { tone(300 + (ch || 0) * 300, 0.12, 'sawtooth', 0.20, 120); },
     turret: function () { var now = (state && state.time) || 0; if (now - lastTurret < 0.05) return; lastTurret = now; tone(920, 0.05, 'square', 0.10, 380); },
