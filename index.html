@@ -382,20 +382,6 @@ var E_TYPES = {
   halftrack: { name:'ХАЛФТРАК',   sides:4, r:0.70, hp:[28,42,60],  speed:0.5, color:'#8a3b3b', pts:90, nrg:45, special:'ground' }, /* наземный: встаёт у города и бьёт по нему; маяк не достаёт (спрайт body_halftrack) */
 };
 
-/* ═══════════════ WAVE DEFS ═══════════════ */
-var WAVES = [
-  [{ type:'scout', count:16, formation:'line' }],
-  [{ type:'soldier', count:20, formation:'line' }],
-  [{ type:'scout', count:24, formation:'vee' },{ type:'soldier', count:12, formation:'line' }],
-  [{ type:'berserker', count:8, formation:'line' },{ type:'scout', count:16, formation:'spread' }],
-  [{ type:'tank', count:4, formation:'center' },{ type:'scout', count:24, formation:'surround' }],
-  [{ type:'general', count:4, formation:'center' },{ type:'soldier', count:32, formation:'surround' }],
-  [{ type:'soldier', count:24, formation:'line' },{ type:'berserker', count:12, formation:'line' }],
-  [{ type:'healer', count:8, formation:'center' },{ type:'tank', count:8, formation:'spread' },{ type:'soldier', count:16, formation:'surround' }],
-  [{ type:'general', count:4, formation:'center' },{ type:'berserker', count:16, formation:'surround' },{ type:'tank', count:4, formation:'center' }],
-  [{ type:'juggernaut', count:4, formation:'center' },{ type:'healer', count:8, formation:'surround' },{ type:'soldier', count:40, formation:'surround' }],
-];
-
 /* ═══════════════ SEQUENCER — MIDI-LIKE SPAWN TIMELINE ═══════════════ */
 /*
  * Нота = одна единица спавна:
@@ -866,7 +852,6 @@ function freshState() {
     colonyTier: 0,
     perks: freshPerks(),
     cities: [],        /* прокачиваемые города {x,y,r,up:{plant,pop,sci,cap},feed,flicker} */
-    foundSites: [],    /* кратеры, где можно заложить новый город */
     volley: [],        /* отложенные бонусные выстрелы (гигаконденсаторы) */
     activeCity: -1,    /* индекс города с открытой панелью прокачки, -1 = закрыта */
     walls: [],         /* крепости-стены по краям reactor zone {fx,up:{turret},…} */
@@ -900,7 +885,6 @@ function perkLvl(id){ return state.perks[id]||0; }
    Пока: +40% ко всему (1.4). */
 var PRICE_MULT = 1.4;
 function priced(n) { return Math.round(n * PRICE_MULT); }
-var CITY_FOUND_COST = 80;
 var CITY_UPGRADES = [
   { key:'plant', icon:'⚡', name:'ЭЛЕКТРОСТАНЦИЯ', max:5, base:20, step:14 }, /* +заряд/урон, провода с током */
   { key:'pop',   icon:'👥', name:'НАСЕЛЕНИЕ',      max:3, base:35, step:30 }, /* ×бонус отдыха */
@@ -1216,7 +1200,6 @@ function wirePath(city) {
 
 /* ── Хит-боксы иконок (экранные координаты) ── */
 function cityIconRect(c) { return { x: c.x - 13, y: c.y - c.r - 30, w: 26, h: 26 }; }
-function foundIconRect(s) { return { x: s.x - 15, y: s.y - 32, w: 30, h: 26 }; }
 /* Кольцо-реактор токамака: центр и радиус (заземлён к городу) */
 function tokRing(c) { var r = 12 + (c.up.tok || 0) * 3; return { x: c.x, y: c.y - c.r - r - 2, r: r }; }
 /* Кнопка токамака (открывает меню перепривязки бонусного снаряда) */
@@ -1397,7 +1380,9 @@ function spawnEnemy(type, x, y, level, speedMult) {
     friction: 0.3,
     restitution: 0.3,
     filterCategoryBits: CFG.CAT_ENEMY,
-    filterMaskBits: CFG.CAT_PROJ,
+    /* Халфтрак наземный — снаряд маяка пролетает над ним (не сталкивается);
+       убивают только турели (хитскан). maskBits 0 = ни с чем физически не сталкивается. */
+    filterMaskBits: (type === 'halftrack') ? 0 : CFG.CAT_PROJ,
   });
 
   /* ФАЗА 12: Множители уровней */
@@ -1777,10 +1762,8 @@ function onContact(contact) {
     projBody = bB; enemyBody = bA;
   }
   if (!proj || !enemy || !proj.alive || !enemy.alive) return;
-
-  /* Халфтрак — наземный: снаряд маяка пролетает над ним (не та высота).
-     Отключаем физический отклик и не наносим урон — убивают только турели. */
-  if (enemy.type === 'halftrack') { contact.setEnabled(false); return; }
+  /* Халфтрак снаряды не задевают вовсе (см. filterMaskBits в spawnEnemy) —
+     этот контакт для него не сработает. */
 
   var vel = projBody.getLinearVelocity();
   var impactSpeed = vel.length();
@@ -2335,9 +2318,6 @@ function addCrater(wx, wy, maxRadius, power, alt) {
      ударное кольцо декомпрессии */
   craters.push({ x: sx, y: sy, r: blastR * 0.15, maxR: blastR, life: 0.45, maxLife: 0.45, power: power });
 }
-
-/* совместимость: старое имя больше не нужно, но пусть будет безопасным no-op */
-function spawnLayerCrater() {}
 
 /* Ударные кольца декомпрессии (визуал) */
 function updateCraters(dt) {
