@@ -419,80 +419,93 @@ function expandFormations(seq) {
   return out;
 }
 
-/* Тестовая волна — заглушка, будет заменена в Фазе 11 */
+/* ── Генераторы боевых композиций (возвращают массивы нот) ──
+   Позволяют собирать «римские» построения: шеренги, клин, фаланга-черепаха,
+   окружение, охраняемая пачка — без ручного перечисления сотен нот. */
+function _spread(count, a, b) {
+  a = (a === undefined) ? 0.12 : a; b = (b === undefined) ? 0.88 : b;
+  var xs = []; if (count <= 1) return [(a + b) / 2];
+  for (var i = 0; i < count; i++) xs.push(a + (b - a) * (i / (count - 1)));
+  return xs;
+}
+/* Шеренга — враги в линию по всей ширине */
+function bLine(t, type, count, level) {
+  var o = [], xs = _spread(count);
+  for (var i = 0; i < count; i++) o.push({ t: t, type: type, x: xs[i], level: level || 0 });
+  return o;
+}
+/* Клин (V) — центр впереди, фланги отстают */
+function bVee(t, type, count, level) {
+  var o = [], half = (count - 1) / 2;
+  for (var i = 0; i < count; i++) { var d = i - half; o.push({ t: t + Math.abs(d) * 0.12, type: type, x: 0.5 + d * 0.06, level: level || 0 }); }
+  return o;
+}
+/* Шеренги-ранги — files столбцов × ranks рядов, ряды входят с задержкой */
+function bRanks(t, type, files, ranks, level, dtGap) {
+  var o = [], xs = _spread(files, 0.2, 0.8); dtGap = dtGap || 0.5;
+  for (var r = 0; r < ranks; r++) for (var f = 0; f < files; f++) o.push({ t: t + r * dtGap, type: type, x: xs[f], level: level || 0 });
+  return o;
+}
+/* Фаланга-черепаха — плотный прямоугольник, по краям щитоносцы (edge), внутри core */
+function bPhalanx(t, core, edge, files, ranks, level, dtGap) {
+  var o = [], xs = _spread(files, 0.24, 0.76); dtGap = dtGap || 0.45;
+  for (var r = 0; r < ranks; r++) for (var f = 0; f < files; f++) {
+    var isEdge = (f === 0 || f === files - 1);
+    o.push({ t: t + r * dtGap, type: isEdge ? edge : core, x: xs[f], level: level || 0 });
+  }
+  return o;
+}
+/* Окружение — враги по краям карты + немного по центру */
+function bSurround(t, type, count, level) {
+  var o = [];
+  for (var i = 0; i < count; i++) {
+    var x = (i % 3 === 0) ? (0.1 + Math.random() * 0.8) : (Math.random() < 0.5 ? 0.02 + Math.random() * 0.2 : 0.78 + Math.random() * 0.2);
+    o.push({ t: t + Math.random() * 1.5, type: type, x: x, level: level || 0 });
+  }
+  return o;
+}
+/* Пачка — лидер по центру, эскорт кольцом вокруг */
+function bPack(t, leader, lvl, escort, n, elvl) {
+  var o = [{ t: t, type: leader, x: 0.5, level: lvl || 0 }];
+  for (var i = 0; i < n; i++) { var a = (i / n) * TAU; o.push({ t: t + 0.15, type: escort, x: 0.5 + Math.cos(a) * 0.12, level: elvl || 0 }); }
+  return o;
+}
+function bCat() { var o = []; for (var i = 0; i < arguments.length; i++) o = o.concat(arguments[i]); return o; }
+
+/* ═══════════════ WAVE SEQUENCES ═══════════════
+   10 разнообразных секвенций с нарастающей сложностью; поздние волны вводят
+   тяжёлые юниты (танк, генерал) и завершаются ДЖАГГЕРНАУТАМИ (самый большой юнит). */
 var WAVE_SEQUENCES = [
-  {
-    id: 'wave_01_patrol',
-    name: 'Дозор',
-    duration: 20,
-    notes: [
-      { t: 0.5, type: 'armor', x: 0.2, level: 0 },
-      { t: 0.5, type: 'armor', x: 0.5, level: 0 },
-      { t: 0.5, type: 'armor', x: 0.8, level: 0 },
-      { t: 2.0, type: 'armor', x: 0.35, level: 0 },
-      { t: 2.0, type: 'armor', x: 0.65, level: 0 },
-      { t: 3.5, type: 'armor', x: 0.15, level: 0 },
-      { t: 3.5, type: 'armor', x: 0.5, level: 0 },
-      { t: 3.5, type: 'armor', x: 0.85, level: 0 },
-      { t: 5.5, type: 'soldier', x: 0.3, level: 0 },
-      { t: 5.5, type: 'soldier', x: 0.5, level: 0 },
-      { t: 5.5, type: 'soldier', x: 0.7, level: 0 },
-      { t: 8.0, type: 'armor', x: 0.1, level: 0 },
-      { t: 8.0, type: 'armor', x: 0.3, level: 0 },
-      { t: 8.0, type: 'armor', x: 0.5, level: 0 },
-      { t: 8.0, type: 'armor', x: 0.7, level: 0 },
-      { t: 8.0, type: 'armor', x: 0.9, level: 0 },
-    ],
-    formations: [
-      /* Бочку топлива охраняет плотный эскорт (пачка, разные ряды) */
-      {
-        t: 11.0, id: 'barrel_pack', leader: 'barrel', leaderLevel: 0,
-        escorts: [
-          { type: 'armor', dx: -1.6, dy: -0.2, dt: 0, level: 0 },
-          { type: 'armor', dx:  1.6, dy: -0.2, dt: 0, level: 0 },
-          { type: 'armor', dx: -3.2, dy: -1.2, dt: 0.2, level: 0 },
-          { type: 'armor', dx:  3.2, dy: -1.2, dt: 0.2, level: 0 },
-          { type: 'soldier', dx: -1.0, dy: -2.4, dt: 0.4, level: 0 },
-          { type: 'soldier', dx:  1.0, dy: -2.4, dt: 0.4, level: 0 },
-        ]
-      },
-    ],
-    modifiers: { hpMult: 1.0, speedMult: 1.0 }
-  },
-  {
-    id: 'wave_02_formation_test',
-    name: 'Формация: Генерал + Эскорт',
-    duration: 25,
-    notes: [],
-    formations: [
-      {
-        t: 1.0,
-        id: 'f1',
-        leader: 'general',
-        leaderLevel: 0,
-        escorts: [
-          { type: 'soldier', dx: -2.5, dy: -0.8, dt: 0, level: 0 },
-          { type: 'soldier', dx:  2.5, dy: -0.8, dt: 0, level: 0 },
-          { type: 'soldier', dx: -4.0, dy: -1.5, dt: 0.5, level: 0 },
-          { type: 'soldier', dx:  4.0, dy: -1.5, dt: 0.5, level: 0 },
-        ]
-      },
-      {
-        t: 8.0,
-        id: 'f2',
-        leader: 'barrel',
-        leaderLevel: 0,
-        escorts: [
-          { type: 'armor', dx: -1.5, dy: -0.5, dt: 0, level: 0 },
-          { type: 'armor', dx:  1.5, dy: -0.5, dt: 0, level: 0 },
-          { type: 'armor', dx: -3.0, dy: -1.0, dt: 0.2, level: 0 },
-          { type: 'armor', dx:  3.0, dy: -1.0, dt: 0.2, level: 0 },
-          { type: 'armor', dx:  0.0, dy: -2.0, dt: 0.4, level: 0 },
-        ]
-      },
-    ],
-    modifiers: { hpMult: 1.0, speedMult: 1.0 }
-  },
+  { id: 'w01_patrol', name: 'Дозор', duration: 22,
+    notes: bCat(bLine(0.5, 'armor', 5), bLine(3, 'armor', 5), bLine(6, 'soldier', 5), bRanks(9.5, 'armor', 5, 2, 0, 0.6), bPack(14, 'barrel', 0, 'armor', 6)),
+    formations: [], modifiers: { hpMult: 1.0 } },
+  { id: 'w02_ranks', name: 'Шеренги', duration: 24,
+    notes: bCat(bRanks(0.5, 'soldier', 6, 3, 0, 0.5), bLine(6, 'armor', 6), bRanks(9, 'soldier', 6, 2, 0, 0.5), bLine(13, 'berserker', 4)),
+    formations: [], modifiers: { hpMult: 1.05 } },
+  { id: 'w03_wedge', name: 'Клин', duration: 24,
+    notes: bCat(bVee(0.5, 'berserker', 7), bLine(4, 'armor', 6), bVee(8, 'soldier', 9), bPack(13, 'barrel', 0, 'soldier', 6)),
+    formations: [], modifiers: { hpMult: 1.1 } },
+  { id: 'w04_phalanx', name: 'Фаланга', duration: 26,
+    notes: bCat(bPhalanx(0.5, 'soldier', 'armor', 6, 3, 0, 0.5), bPhalanx(8, 'soldier', 'armor', 6, 3, 0, 0.5), bLine(15, 'berserker', 5)),
+    formations: [], modifiers: { hpMult: 1.12 } },
+  { id: 'w05_armor_push', name: 'Танковый удар', duration: 26,
+    notes: bCat(bPack(1, 'tank', 0, 'armor', 8), bSurround(4, 'soldier', 10), bLine(10, 'armor', 7), bPack(15, 'tank', 0, 'armor', 6)),
+    formations: [], modifiers: { hpMult: 1.15 } },
+  { id: 'w06_general', name: 'Генерал', duration: 28,
+    notes: bCat(bPack(1, 'general', 0, 'soldier', 8), bPhalanx(6, 'soldier', 'armor', 7, 3, 0, 0.45), bLine(14, 'berserker', 6), bPack(18, 'barrel', 0, 'armor', 6)),
+    formations: [], modifiers: { hpMult: 1.18 } },
+  { id: 'w07_barrels', name: 'Огненный вал', duration: 28,
+    notes: bCat(bPack(1, 'barrel', 0, 'armor', 6), bPack(4, 'barrel', 0, 'armor', 6), bVee(8, 'berserker', 9), bPack(12, 'barrel', 0, 'soldier', 6), bSurround(16, 'soldier', 12)),
+    formations: [], modifiers: { hpMult: 1.2 } },
+  { id: 'w08_healers', name: 'Лекари и танки', duration: 30,
+    notes: bCat(bPack(1, 'tank', 0, 'armor', 6), bLine(4, 'healer', 4), bPack(8, 'tank', 0, 'soldier', 8), bSurround(12, 'soldier', 14), bLine(18, 'healer', 4)),
+    formations: [], modifiers: { hpMult: 1.22 } },
+  { id: 'w09_siege', name: 'Осада', duration: 32,
+    notes: bCat(bPack(1, 'general', 0, 'armor', 8), bPhalanx(5, 'soldier', 'armor', 8, 3, 0, 0.4), bSurround(10, 'berserker', 12), bPack(15, 'tank', 0, 'soldier', 8), bLine(22, 'healer', 4)),
+    formations: [], modifiers: { hpMult: 1.25 } },
+  { id: 'w10_juggernaut', name: 'ДЖАГГЕРНАУТ', duration: 36,
+    notes: bCat(bLine(1, 'juggernaut', 2), bLine(6, 'juggernaut', 2), bPack(10, 'general', 0, 'soldier', 10), bSurround(14, 'soldier', 20), bLine(20, 'healer', 6), bSurround(24, 'berserker', 12)),
+    formations: [], modifiers: { hpMult: 1.3 } },
 ];
 
 /* ═══════════════ GAME STATE ═══════════════ */
@@ -943,24 +956,50 @@ function updateCities(dt) {
   }
 }
 
+/* Плавный поворот ствола турели к цели (или «вверх», откуда идут враги) */
+function aimTurret(c, best, dt) {
+  var pivotX = c.x + c.r * 0.6, pivotY = c.y - c.r * 0.4; /* пивот пушки (как в отрисовке) */
+  var desired;
+  if (best && best.alive) {
+    var bsp = toScreen(best.body.getPosition().x, best.body.getPosition().y);
+    desired = Math.atan2(bsp[1] - pivotY, bsp[0] - pivotX);
+  } else {
+    desired = -Math.PI / 2; /* покой — ствол вверх, к фронту врагов */
+  }
+  if (c.turretAng === undefined) c.turretAng = desired;
+  var da = desired - c.turretAng;
+  while (da > Math.PI) da -= TAU;
+  while (da < -Math.PI) da += TAU;
+  c.turretAng += da * Math.min(1, dt * 8); /* плавный доворот */
+}
+
 /* Туррели городов: авто-разряд по ближайшему врагу в бою (сила от уровня) */
 function updateTurrets(dt) {
-  if (!state.waveActive || !state.enemies.length) return;
+  if (!state.waveActive || !state.enemies.length) {
+    /* нет боя — цели нет, стволы возвращаются вверх */
+    for (var q = 0; q < state.cities.length; q++) {
+      var cc = state.cities[q];
+      if ((cc.up.turret || 0) > 0) { cc.turretAim = null; aimTurret(cc, null, dt); }
+    }
+    return;
+  }
   var agg = cityAgg();
   for (var i = 0; i < state.cities.length; i++) {
     var c = state.cities[i], lvl = c.up.turret || 0;
-    if (lvl <= 0 || c.turretCd > 0) continue;
+    if (lvl <= 0) continue;
     var cwx = c.x / scale, cwy = c.y / scale;         /* город в мировых координатах */
     var range = 6 + lvl * 2.5;
+    /* ближайшая ЖИВАЯ цель в радиусе — каждый кадр (для аима), null если нет */
     var best = null, bestD = range;
     for (var e = 0; e < state.enemies.length; e++) {
       var en = state.enemies[e]; if (!en.alive) continue;
       var ep = en.body.getPosition(), dx = ep.x - cwx, dy = ep.y - cwy, d = Math.sqrt(dx * dx + dy * dy);
       if (d < bestD) { bestD = d; best = en; }
     }
-    if (!best) continue;
+    c.turretAim = best;          /* сбрасывается в null, если цель ушла/умерла */
+    aimTurret(c, best, dt);      /* плавный поворот к цели каждый кадр */
+    if (c.turretCd > 0 || !best) continue; /* целимся, но стреляем только по кулдауну и при цели */
     c.turretCd = Math.max(0.4, 1.3 - lvl * 0.25);      /* темп растёт с уровнем */
-    c.turretAim = best;
     var bp = best.body.getPosition();
     var dmg = (3 + lvl * 3) * agg.dmgMult;
     if (best.shielded) dmg *= 0.5;
@@ -1456,11 +1495,15 @@ function createProjectileBody(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) 
     filterMaskBits: CFG.CAT_ENEMY,
   });
   body.setLinearVelocity(Vec2(dirX * speed, dirY * speed));
-  /* Range perk: reduces damping growth with distance */
+  /* Range perk: reduces damping growth with distance.
+     Снаряд-колония ИГНОРИРУЕТ прокачку — фиксированный дампинг, чтобы он не
+     улетал при высокой дальности и стабильно основывал город. */
   var rangeLvl = perkLvl('range');
   var baseDamping = 0.8;
-  if (rangeLvl === 1) baseDamping = 0.5; /* Меньший дампинг */
-  else if (rangeLvl === 2) baseDamping = 0.2; /* Минимальный дампинг */
+  if (!ammo.colony) {
+    if (rangeLvl === 1) baseDamping = 0.5; /* Меньший дампинг */
+    else if (rangeLvl === 2) baseDamping = 0.2; /* Минимальный дампинг */
+  }
   body.setLinearDamping(baseDamping);
   var proj = {
     body: body,
@@ -1477,8 +1520,8 @@ function createProjectileBody(fromX, fromY, dirX, dirY, speed, charge, ammoIdx) 
     plasmaParticles: [],
     plasmaNodes: []
   };
-  /* Инициализируем плазму для снаряда с учётом заряда */
-  var maxCh = CFG.MAX_CHARGE * (perkLvl('overcharge') > 0 ? 1.5 : 1);
+  /* Инициализируем плазму для снаряда с учётом заряда (колония — без overcharge) */
+  var maxCh = CFG.MAX_CHARGE * ((!ammo.colony && perkLvl('overcharge') > 0) ? 1.5 : 1);
   var chRatio = Math.min(charge / maxCh, 1);
   initProjectilePlasma(proj, chRatio);
   body.setUserData({ kind: 'proj', ref: proj });
@@ -2221,6 +2264,21 @@ function startWave() {
   var seq = WAVE_SEQUENCES[waveIdx];
   var expandedNotes = expandFormations(seq);
 
+  /* ×2 численность врагов — дублируем ноты (кроме тяжёлых боссов, чтобы не
+     превращать их в неубиваемую стену). Дубль слегка смещён по x и t. */
+  var HEAVY_DUP = { juggernaut: true, tank: true, general: true };
+  var doubled = [];
+  for (var dbi = 0; dbi < expandedNotes.length; dbi++) {
+    var dn = expandedNotes[dbi];
+    doubled.push(dn);
+    if (!HEAVY_DUP[dn.type]) {
+      var djx = Math.min(0.96, Math.max(0.04, dn.x + (Math.random() - 0.5) * 0.09));
+      doubled.push({ t: dn.t + 0.25, type: dn.type, x: djx, y: dn.y, level: dn.level, group: dn.group });
+    }
+  }
+  doubled.sort(function(a, b){ return a.t - b.t; });
+  expandedNotes = doubled;
+
   /* ФАЗА 12: Применяем уровни врагов в зависимости от цикла */
   if (cycleNum >= 2) {
     for (var ni = 0; ni < expandedNotes.length; ni++) {
@@ -2307,7 +2365,12 @@ function initInput() {
         /* Первый город бесплатно, дальше 200 энергии за выстрел */
         var cost = state.firstColony ? COLONY_SHOT_COST : 0;
         if (state.energy < cost) { showWaveText('⚡ НУЖНО ' + cost); state.charge = 0; return; }
-        doFire(lh.x, lh.y, nx, ny, speed, state.charge, state.selectedAmmo);
+        /* Колония НЕ зависит от прокачки: фиксированная скорость (без бонуса станций)
+           и фиксированный заряд — чтобы снаряд всегда приземлялся предсказуемо и
+           основывал город, даже при прокачанной дальности. */
+        var colonySpeed = Math.min(dist * CFG.VEL_FACTOR, 18);
+        var colonyCharge = CFG.MAX_CHARGE * 0.7;
+        doFire(lh.x, lh.y, nx, ny, colonySpeed, colonyCharge, state.selectedAmmo);
         state.energy -= cost;
         state.selectedAmmo = 0;   /* авто-переключение на базовый после выстрела колонией */
         buildAmmoBar();
@@ -3434,10 +3497,9 @@ function drawCityWorld() {
         ctx.fillText('№' + c.tokNum, tcx, tcy - trad - 6); ctx.restore();
       }
     }
-    /* Туррель — пушка, смотрит на цель */
+    /* Туррель — пушка, плавно смотрит на цель (угол считается от пивота пушки) */
     if (c.up.turret > 0) {
-      var aa = 0;
-      if (c.turretAim && c.turretAim.alive) { var ap = toScreen(c.turretAim.body.getPosition().x, c.turretAim.body.getPosition().y); aa = Math.atan2(ap[1] - c.y, ap[0] - c.x); }
+      var aa = (c.turretAng === undefined) ? -Math.PI / 2 : c.turretAng;
       ctx.save(); ctx.translate(c.x + c.r * 0.6, c.y - c.r * 0.4); ctx.rotate(aa);
       ctx.fillStyle = '#26343c'; ctx.strokeStyle = '#8fd0ff'; ctx.lineWidth = 1.5;
       ctx.fillRect(-3, -3, 6, 6); ctx.strokeRect(-3, -3, 6, 6);
