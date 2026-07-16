@@ -719,21 +719,34 @@ function applyScars() {
       if (scrY < -s.r - CLOUD_CELL || scrY > scrH + s.r || scrX < -s.r - CLOUD_CELL || scrX > scrW + s.r) {
         L.scars.splice(si, 1); continue; /* ушёл за экран — удаляем */
       }
-      var rr = (s.curR !== undefined) ? s.curR : s.r; /* растущий радиус воронки */
-      if (rr <= 0.5) continue;
-      var cx = scrX / CLOUD_CELL, cy = scrY / CLOUD_CELL;
-      var rc = rr / CLOUD_CELL, outer = rc * 1.28, rimW = (outer - rc) || 1, depth = s.depth;
-      var i0 = Math.max(0, Math.floor(cx - outer)), i1 = Math.min(fw - 1, Math.ceil(cx + outer));
-      var j0 = Math.max(0, Math.floor(cy - outer)), j1 = Math.min(fh - 1, Math.ceil(cy + outer));
+      var rr = (s.curR !== undefined) ? s.curR : s.r; /* радиус провала (растёт) */
+      var cx = scrX / CLOUD_CELL, cy = scrY / CLOUD_CELL, depth = s.depth;
+      var rc = rr / CLOUD_CELL;
+      /* Ударная волна: гауссов бугор уплотнения на фронте waveR, обгоняет провал,
+         амплитуда затухает. При waveR≈0 — плотная сфера в точке удара. */
+      var waveOn = false, waveRc = 0, sigC = 1, amp = 0;
+      if (s.waveT !== undefined && s.waveT < s.waveLife) {
+        amp = s.waveAmp * (1 - s.waveT / s.waveLife);
+        if (amp > 0.02) {
+          waveOn = true;
+          waveRc = s.waveR / CLOUD_CELL;
+          sigC = (s.sigma0 * (1 + (s.waveR / s.r) * 0.3)) / CLOUD_CELL;
+          if (sigC < 0.6) sigC = 0.6;
+        }
+      }
+      if (rr <= 0.5 && !waveOn) continue;
+      var ext = Math.max(rc, waveOn ? waveRc + 3 * sigC : 0); /* полный радиус влияния */
+      var i0 = Math.max(0, Math.floor(cx - ext)), i1 = Math.min(fw - 1, Math.ceil(cx + ext));
+      var j0 = Math.max(0, Math.floor(cy - ext)), j1 = Math.min(fh - 1, Math.ceil(cy + ext));
+      var inv2s2 = waveOn ? 1 / (2 * sigC * sigC) : 0;
       for (var j = j0; j <= j1; j++) {
         var dy = j - cy, b = j * fw;
         for (var i = i0; i <= i1; i++) {
           var dx = i - cx, dc = Math.sqrt(dx * dx + dy * dy);
-          if (dc < rc) {
-            var f = 1 - dc / rc; fld[b + i] -= f * f * depth;            /* провал-купол */
-          } else if (dc < outer) {
-            var ring = (dc - rc) / rimW, push = (1 - ring) * (1 - ring) * 0.16 * depth; /* приподнятый валик-губа */
-            fld[b + i] += (push > 0.18 ? 0.18 : push);
+          if (rc > 0.5 && dc < rc) { var f = 1 - dc / rc; fld[b + i] -= f * f * depth; } /* провал */
+          if (waveOn) {
+            var band = dc - waveRc;                       /* расстояние до фронта волны */
+            fld[b + i] += amp * Math.exp(-(band * band) * inv2s2); /* мягкий уплотняющий бугор */
           }
         }
       }
@@ -2430,7 +2443,12 @@ function addCrater(wx, wy, maxRadius, power, alt) {
   if (cloudLayers[0] && cloudLayers[0].scars) {
     for (var li = 0; li < cloudLayers.length; li++) {
       var L = cloudLayers[li]; if (!L.scars) continue;
-      L.scars.push({ cx: sx + L.scrollX, cy: sy + L.scrollY, r: r, curR: 0, growth: r * 3.4, depth: depth });
+      L.scars.push({
+        cx: sx + L.scrollX, cy: sy + L.scrollY,
+        r: r, curR: 0, growth: r * 3.4, depth: depth,          /* ПРОВАЛ (постоянный) */
+        waveR: 0, waveT: 0, waveLife: 0.75, waveSpeed: r * 3.2, /* УДАРНАЯ ВОЛНА (временная) */
+        waveAmp: 0.5 + power * 0.4, sigma0: r * 0.13
+      });
       if (L.scars.length > 48) L.scars.splice(0, L.scars.length - 48); /* ограничение */
     }
   }
@@ -2446,12 +2464,13 @@ function updateCraters(dt) {
     c.life -= dt;
     if (c.life <= 0) craters.splice(ci, 1);
   }
-  /* Раздуваем воронки (curR → r) — ударная волна расширяет провал */
+  /* Провал раздувается (curR→r, медленно); ударная волна (waveR) бежит впереди */
   for (var li = 0; li < cloudLayers.length; li++) {
     var sc = cloudLayers[li].scars; if (!sc) continue;
     for (var si = 0; si < sc.length; si++) {
       var s = sc[si];
       if (s.curR !== undefined && s.curR < s.r) s.curR = Math.min(s.r, s.curR + s.growth * dt);
+      if (s.waveT !== undefined && s.waveT < s.waveLife) { s.waveT += dt; s.waveR += s.waveSpeed * dt; }
     }
   }
 }
