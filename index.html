@@ -935,6 +935,7 @@ function freshState() {
     activeCity: -1,    /* индекс города с открытой панелью прокачки, -1 = закрыта */
     walls: [],         /* крепости-стены по краям reactor zone {fx,up:{turret},…} */
     activeWall: -1,    /* индекс стены с открытой панелью, -1 = закрыта */
+    turretMenu: null,  /* {kind:'c'|'w', i} — открытое меню приоритета турели */
     shakeTimer: 0,
     shakeIntensity: 0,
     gameOver: false,
@@ -1070,6 +1071,31 @@ function buyWallUpgrade(w) {
   var u = WALL_TURRET, lvl = w.up.turret || 0; if (lvl >= u.max) return;
   var cost = priced(u.base + u.step * lvl); if (state.energy < cost) return;
   state.energy -= cost; w.up.turret = lvl + 1; updateHUD();
+}
+/* Все владельцы турелей (города + стены) с экранным rect кнопки приоритета 🎯 */
+function turretOwners() {
+  var out = [];
+  for (var i = 0; i < state.cities.length; i++) {
+    var c = state.cities[i]; if ((c.up.turret || 0) <= 0) continue;
+    var ir = cityIconRect(c);
+    out.push({ o: c, kind: 'c', i: i, btn: { x: ir.x - 24, y: ir.y + 2, w: 22, h: 22 } });
+  }
+  for (var j = 0; j < state.walls.length; j++) {
+    var w = state.walls[j]; if ((w.up.turret || 0) <= 0) continue;
+    var wr = wallIconRect(w);
+    out.push({ o: w, kind: 'w', i: j, btn: { x: wr.x - 24, y: wr.y, w: 22, h: 22 } });
+  }
+  return out;
+}
+/* Кнопки-режимы приоритета (3 шт), привязка к якорю */
+function turretModeButtons(btn) {
+  var bw = 120, bh = 24, gap = 4, out = [];
+  var bx = btn.x - 4 - bw; if (bx < 6) bx = btn.x + btn.w + 4;
+  if (bx + bw > W - 6) bx = W - 6 - bw;
+  var by = btn.y; if (by + TURRET_MODES.length * (bh + gap) > H - 8) by = H - 8 - TURRET_MODES.length * (bh + gap);
+  if (by < 44) by = 44;
+  for (var i = 0; i < TURRET_MODES.length; i++) out.push({ x: bx, y: by + i * (bh + gap), w: bw, h: bh, mode: TURRET_MODES[i] });
+  return out;
 }
 /* Крепости + их турели в мировом слое (под облаками) */
 function drawWalls() {
@@ -1370,7 +1396,37 @@ function cityPanelButtons(city) {
 /* Тап по миру: иконки городов / кнопки панели / основание нового города.
    Возвращает true, если тап «съеден» (не начинать перетаскивание маяка). */
 function cityHitTest(sx, sy) {
-  if (!state.colonized || state.waveActive) { state.activeCity = -1; state.tokMenu = -1; state.activeWall = -1; return false; } /* в бою прокачка недоступна */
+  if (!state.colonized || state.waveActive) { state.activeCity = -1; state.tokMenu = -1; state.activeWall = -1; state.turretMenu = null; return false; } /* в бою прокачка недоступна */
+  /* Меню приоритета турели открыто — выбор режима или закрытие по тапу мимо */
+  if (state.turretMenu) {
+    var tmOwner = (state.turretMenu.kind === 'c') ? state.cities[state.turretMenu.i] : (state.walls[state.turretMenu.i]);
+    if (tmOwner && (tmOwner.up.turret || 0) > 0) {
+      var tan = null, tow = turretOwners();
+      for (var ti = 0; ti < tow.length; ti++) if (tow[ti].kind === state.turretMenu.kind && tow[ti].i === state.turretMenu.i) tan = tow[ti].btn;
+      if (tan) {
+        var tmb = turretModeButtons(tan);
+        for (var tmi = 0; tmi < tmb.length; tmi++) {
+          var mm = tmb[tmi];
+          if (sx >= mm.x && sx <= mm.x + mm.w && sy >= mm.y && sy <= mm.y + mm.h) {
+            tmOwner.turretMode = mm.mode.id; tmOwner.turretTarget = null; /* сменили приоритет — перезахват */
+            return true;
+          }
+        }
+      }
+    }
+    state.turretMenu = null; /* тап мимо — закрыть */
+  }
+  /* Кнопки приоритета турелей 🎯 — открыть/закрыть меню */
+  var townersH = turretOwners();
+  for (var th = 0; th < townersH.length; th++) {
+    var tb = townersH[th].btn;
+    if (sx >= tb.x && sx <= tb.x + tb.w && sy >= tb.y && sy <= tb.y + tb.h) {
+      var same = state.turretMenu && state.turretMenu.kind === townersH[th].kind && state.turretMenu.i === townersH[th].i;
+      state.turretMenu = same ? null : { kind: townersH[th].kind, i: townersH[th].i };
+      state.activeCity = -1; state.tokMenu = -1; state.activeWall = -1;
+      return true;
+    }
+  }
   /* Панель стены открыта — ловим покупку или закрываем по тапу мимо */
   if (state.activeWall >= 0 && state.walls[state.activeWall]) {
     var wbtns = wallPanelButtons(state.walls[state.activeWall]);
@@ -1388,7 +1444,7 @@ function cityHitTest(sx, sy) {
     var wgr = wallIconRect(state.walls[wgi]);
     if (sx >= wgr.x && sx <= wgr.x + wgr.w && sy >= wgr.y && sy <= wgr.y + wgr.h) {
       state.activeWall = (state.activeWall === wgi) ? -1 : wgi;
-      state.activeCity = -1; state.tokMenu = -1;
+      state.activeCity = -1; state.tokMenu = -1; state.turretMenu = null;
       return true;
     }
   }
@@ -1408,7 +1464,7 @@ function cityHitTest(sx, sy) {
     var trb = tokBtnRect(tc);
     if (sx >= trb.x && sx <= trb.x + trb.w && sy >= trb.y && sy <= trb.y + trb.h) {
       state.tokMenu = (state.tokMenu === tb) ? -1 : tb;
-      state.activeCity = -1;
+      state.activeCity = -1; state.activeWall = -1; state.turretMenu = null;
       return true;
     }
   }
@@ -1426,7 +1482,7 @@ function cityHitTest(sx, sy) {
   }
   for (var c = 0; c < state.cities.length; c++) {
     var r = cityIconRect(state.cities[c]);
-    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; state.tokMenu = -1; state.activeWall = -1; return true; }
+    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) { state.activeCity = c; state.tokMenu = -1; state.activeWall = -1; state.turretMenu = null; return true; }
   }
   return false;
 }
@@ -2556,6 +2612,7 @@ function startWave() {
   state.activeCity = -1; /* закрыть панель прокачки города при старте волны */
   state.tokMenu = -1;    /* и меню токамака */
   state.activeWall = -1; /* и панель стены */
+  state.turretMenu = null; /* и меню приоритета турели */
   /* Если выбран снаряд «Колония» — даём 5с выбрать боевой из первых трёх */
   if (AMMO[state.selectedAmmo] && AMMO[state.selectedAmmo].colony) {
     state.ammoGrace = 5;
@@ -3977,7 +4034,7 @@ function drawBossBar() {
 /* UI городов поверх облаков: иконки, места под новый город, панель прокачки */
 function drawCityUI() {
   if (!state.colonized) return;
-  if (state.waveActive) { state.activeCity = -1; state.tokMenu = -1; state.activeWall = -1; return; } /* в бою прокачка скрыта */
+  if (state.waveActive) { state.activeCity = -1; state.tokMenu = -1; state.activeWall = -1; state.turretMenu = null; return; } /* в бою прокачка скрыта */
   ctx.save();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   /* (кнопка «+ГОРОД» удалена — города основывает сам снаряд-колония при попадании) */
@@ -4075,6 +4132,36 @@ function drawCityUI() {
       ctx.textAlign = 'left';
     }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  }
+  /* кнопки приоритета турелей 🎯 (города + стены) + меню выбора режима */
+  var towners = turretOwners();
+  for (var to = 0; to < towners.length; to++) {
+    var ow = towners[to], b = ow.btn, mode = TURRET_MODES[ow.o.turretMode || 0];
+    var open = state.turretMenu && state.turretMenu.kind === ow.kind && state.turretMenu.i === ow.i;
+    ctx.fillStyle = open ? 'rgba(60,40,0,0.95)' : 'rgba(24,18,6,0.9)';
+    ctx.strokeStyle = '#ffab00'; ctx.lineWidth = 2;
+    ctx.fillRect(b.x, b.y, b.w, b.h); ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = '#ffd27f'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(mode.icon, b.x + b.w / 2, b.y + b.h / 2 + 1);
+  }
+  if (state.turretMenu) {
+    var owner = (state.turretMenu.kind === 'c') ? state.cities[state.turretMenu.i] : state.walls[state.turretMenu.i];
+    if (owner && (owner.up.turret || 0) > 0) {
+      var anchor = null;
+      for (var t2 = 0; t2 < towners.length; t2++) if (towners[t2].kind === state.turretMenu.kind && towners[t2].i === state.turretMenu.i) anchor = towners[t2].btn;
+      if (anchor) {
+        var mb = turretModeButtons(anchor);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        for (var mi = 0; mi < mb.length; mi++) {
+          var m = mb[mi], sel = (owner.turretMode || 0) === m.mode.id;
+          ctx.fillStyle = 'rgba(5,12,20,0.96)'; ctx.strokeStyle = sel ? '#ffd54a' : '#555'; ctx.lineWidth = 2;
+          ctx.fillRect(m.x, m.y, m.w, m.h); ctx.strokeRect(m.x, m.y, m.w, m.h);
+          ctx.fillStyle = '#e8eaed'; ctx.font = '700 11px "Chakra Petch"';
+          ctx.fillText(m.mode.icon + '  ' + m.mode.name, m.x + 8, m.y + m.h / 2);
+        }
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      }
+    }
   }
   ctx.restore();
 }
