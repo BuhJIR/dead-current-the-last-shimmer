@@ -364,7 +364,7 @@ var PERK_DEFS = [
 var AMMO = [
   { id:'standard', icon:'⚪', name:'Стандарт', desc:'Обычный снаряд',                  color:'#ffffff' },
   { id:'tesla',    icon:'⚡', name:'Тесла',    desc:'Красные молнии ×2, не взрывается', color:'#ff2b4a', noExplode:true },
-  { id:'locked3',  icon:'🔒', name:'???',      desc:'Заперто',                         color:'#666666', locked:true },
+  { id:'rift',     icon:'🌀', name:'Разлом',   desc:'Чёрная дыра: тянет и крушит',      color:'#b388ff', noExplode:true, rift:true }, /* DLC: открывается за убийство босса */
   { id:'colony',   icon:'🏙', name:'Колония',  desc:'Основывает город',                color:'#39ff14', colony:true },
 ];
 var COLONY_SHOT_COST = 200;
@@ -429,6 +429,7 @@ var E_TYPES = {
   tank:      { name:'Танк',       sides:6, r:1.05, hp:[90,140,200],speed:0.7, color:'#8d6e63', pts:80, nrg:40, special:null },
   juggernaut:{ name:'Джаггернаут',sides:8, r:1.40, hp:[150,240,350],speed:0.44,color:'#5d4037', pts:150,nrg:80, special:null },
   halftrack: { name:'ХАЛФТРАК',   sides:4, r:0.70, hp:[28,42,60],  speed:0.5, color:'#8a3b3b', pts:90, nrg:45, special:'ground' }, /* наземный: встаёт у города и бьёт по нему; маяк не достаёт (спрайт body_halftrack) */
+  leviathan: { name:'ЛЕВИАФАН',   sides:8, r:2.60, hp:[1400,2100,3000], speed:0.32, color:'#7a1fa0', pts:1200, nrg:500, special:'boss' }, /* DLC-босс: HP-бар, плодит миньонов; за убийство — снаряд «Разлом» */
 };
 
 /* ═══════════════ SEQUENCER — MIDI-LIKE SPAWN TIMELINE ═══════════════ */
@@ -895,6 +896,8 @@ function freshState() {
     lighthouse: { x:0, y:0 },
     colonized: false, /* true после нажатия COLONIZE */
     firstColony: false, /* true после первого кратера */
+    riftUnlocked: false, /* DLC: открывается за первое убийство босса-Левиафана */
+    bossKills: 0,        /* сколько боссов убито */
     lhAbove: 0, /* 0..1 плавный переход маяка над/под облаками */
     dragging: false,
     dragStart: null,
@@ -1832,6 +1835,15 @@ function onContact(contact) {
   /* Халфтрак снаряды не задевают вовсе (см. filterMaskBits в spawnEnemy) —
      этот контакт для него не сработает. */
 
+  /* РАЗЛОМ (DLC): при попадании открывает чёрную дыру и гаснет (без взрыва) */
+  if (proj.ammo.rift) {
+    var rpos = enemyBody.getPosition();
+    spawnSingularity(rpos.x, rpos.y);
+    spawnPlasmaExplosion(rpos.x, rpos.y, proj.ammo.color, 6, 0.4);
+    proj.alive = false;
+    return;
+  }
+
   var vel = projBody.getLinearVelocity();
   var impactSpeed = vel.length();
   var _agg = cityAgg();
@@ -2028,6 +2040,21 @@ function killEnemy(e) {
   state.score += e.def.pts;
   state.energy += e.def.nrg;
   AUDIO.death();
+  /* БОСС повержен (DLC): награда + разблокировка снаряда «Разлом» при первом убийстве */
+  if (e.def.special === 'boss') {
+    var bp = e.body.getPosition();
+    state.bossKills = (state.bossKills || 0) + 1;
+    state.shakeTimer = 0.8; state.shakeIntensity = 14;
+    spawnPlasmaExplosion(bp.x, bp.y, e.def.color, 40, 1.0);
+    AUDIO.city();
+    if (!state.riftUnlocked) {
+      state.riftUnlocked = true;
+      showWaveText('🌀 РАЗЛОМ ОТКРЫТ — новый снаряд!');
+      buildAmmoBar();
+    } else {
+      showWaveText('☢ ЛЕВИАФАН ПОВЕРЖЕН  +' + e.def.nrg + '⚡');
+    }
+  }
   var p = e.body.getPosition();
   spawnDeathParticles(p.x, p.y, e.def.color, e.def.r * 14);
   /* Бочка топлива: огненный взрыв при гибели */
@@ -2251,6 +2278,11 @@ function updateSingularities(dt) {
       if (dist < radius && dist > 0.2) {
         var str = pullForce * (1 - dist / radius) * e.body.getMass() * dt * 3;
         e.body.applyForceToCenter(Vec2(dx / dist * str, dy / dist * str));
+        /* крушение в ядре разлома */
+        if (dist < 1.3 && e.type !== 'halftrack') {
+          e.hp -= 34 * dt; e.flashTimer = 0.06;
+          if (e.hp <= 0) killEnemy(e);
+        }
       }
     }
     if (Math.random() < 0.3) addParticle(s.x + (Math.random()-0.5)*2, s.y + (Math.random()-0.5)*2, 0, 0, 0.05, '#b388ff', 0.3);
@@ -2507,6 +2539,13 @@ function startWave() {
   doubled.sort(function(a, b){ return a.t - b.t; });
   expandedNotes = doubled;
 
+  /* DLC: НОЧЬЮ каждого 5-го дня из смога вырывается БОСС-ЛЕВИАФАН (один за цикл) */
+  if (dayWave % 5 === 0 && isNight) {
+    expandedNotes.push({ t: 3.0, type: 'leviathan', x: 0.5, level: Math.min(2, Math.max(0, cycleNum - 1)) });
+    expandedNotes.sort(function(a, b){ return a.t - b.t; });
+    showWaveText('☢☢ ЛЕВИАФАН ПРОБУЖДАЕТСЯ ☢☢');
+  }
+
   /* ФАЗА 12: Применяем уровни врагов в зависимости от цикла */
   if (cycleNum >= 2) {
     for (var ni = 0; ni < expandedNotes.length; ni++) {
@@ -2604,9 +2643,10 @@ function initInput() {
         state.selectedAmmo = 0;   /* авто-переключение на базовый после выстрела колонией */
         buildAmmoBar();
       } else {
-        if (state.energy < 1) { showWaveText('⚡ NO ENERGY'); state.charge = 0; return; }
+        var shotCost = (AMMO[state.selectedAmmo] && AMMO[state.selectedAmmo].rift) ? 40 : 1; /* Разлом — дорогой суперснаряд */
+        if (state.energy < shotCost) { showWaveText('⚡ НУЖНО ' + shotCost); state.charge = 0; return; }
         doFire(lh.x, lh.y, nx, ny, speed, state.charge, state.selectedAmmo);
-        state.energy -= 1;
+        state.energy -= shotCost;
         if (perkLvl('singularity') > 0 && state.charge >= CFG.MAX_CHARGE * 0.95) {
           var sRange = Math.min(dist * 2, 8);
           spawnSingularity(lh.x + nx * sRange, lh.y + ny * sRange);
@@ -2950,6 +2990,20 @@ function update(dt) {
       }
     }
 
+    /* БОСС-ЛЕВИАФАН (DLC): медленно прёт к базе и периодически плодит миньонов */
+    if (e.def.special === 'boss') {
+      e.bossCd = (e.bossCd || 4) - dt;
+      if (e.bossCd <= 0) {
+        e.bossCd = 5.5;
+        var mtypes = ['soldier', 'armor', 'berserker'];
+        for (var mk = 0; mk < 2; mk++) {
+          var mt = mtypes[Math.floor(Math.random() * mtypes.length)];
+          spawnEnemy(mt, ep.x + (Math.random() - 0.5) * 3, ep.y + def.r + Math.random(), e.level || 0);
+        }
+        spawnHitParticles(ep.x, ep.y, e.def.color, 16);
+      }
+    }
+
     e.body.applyForceToCenter(Vec2(fx, fy));
 
     /* Base breach */
@@ -3006,6 +3060,8 @@ function update(dt) {
       } else {
         spawnElectricSparks(pp.x, pp.y, p.ammo.color, 24); /* тесла: без взрыва, только разряд */
       }
+      /* РАЗЛОМ (DLC): промах — всё равно открывает чёрную дыру в точке остановки */
+      if (p.ammo.rift) spawnSingularity(pp.x, pp.y);
       /* Кратер под город делает ТОЛЬКО снаряд «Колония» (иначе боевой выстрел бил бы по земле) */
       if (p.colony) createShotCrater(pp.x, pp.y, chargeNorm);
       p.alive = false;
@@ -3185,6 +3241,7 @@ function render() {
 
   /* ── UI прокачки городов ПОВЕРХ облаков ── */
   drawCityUI();
+  drawBossBar(); /* DLC: HP-полоса босса поверх всего */
 
   /* ── Круг-подсказка туториала ПОВЕРХ всех облаков ── */
   if (_tut.state === 'hold' || (_tut.state === 'active' && _tutDragPct() < 0.2)) {
@@ -3813,6 +3870,30 @@ function drawCityWorld() {
       }
     }
   }
+}
+
+/* DLC: HP-полоса босса-Левиафана сверху экрана, пока он жив */
+function drawBossBar() {
+  var boss = null;
+  for (var i = 0; i < state.enemies.length; i++) {
+    var en = state.enemies[i];
+    if (en.alive && en.def.special === 'boss') { boss = en; break; }
+  }
+  if (!boss) return;
+  var bw = W * 0.72, bx = (W - bw) / 2, by = 40, bh = 12;
+  var f = Math.max(0, boss.hp / boss.maxHp);
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(bx - 3, by - 3, bw + 6, bh + 6);
+  ctx.fillStyle = '#2a0a3a'; ctx.fillRect(bx, by, bw, bh);
+  var grad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+  grad.addColorStop(0, '#7a1fa0'); grad.addColorStop(1, '#d16bff');
+  ctx.fillStyle = grad; ctx.fillRect(bx, by, bw * f, bh);
+  ctx.strokeStyle = '#e6b6ff'; ctx.lineWidth = 1.5; ctx.shadowColor = '#b388ff'; ctx.shadowBlur = 8;
+  ctx.strokeRect(bx, by, bw, bh); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#f0e0ff'; ctx.font = '700 11px "Chakra Petch"';
+  ctx.fillText('☢ ЛЕВИАФАН  ' + Math.ceil(boss.hp) + ' / ' + Math.ceil(boss.maxHp), W / 2, by + bh + 9);
+  ctx.restore();
 }
 
 /* UI городов поверх облаков: иконки, места под новый город, панель прокачки */
@@ -5061,7 +5142,8 @@ function showWaveText(text) {
 function ammoAvailable(i) {
   var a = AMMO[i];
   if (a.colony) return !state.waveActive;                 /* колония — только между волн */
-  if (a.locked) return false;                             /* 3-й закрыт */
+  if (a.rift) return state.riftUnlocked && state.firstColony; /* DLC: за убийство босса */
+  if (a.locked) return false;
   if (a.id === 'tesla') return state.firstColony && cityAgg().tok > 0; /* открывает токамак */
   return state.firstColony;                               /* базовый — после первой колонии */
 }
@@ -5095,6 +5177,7 @@ function buildAmmoBar() {
     /* Подпись: цена колонии / замок / условие */
     var labTxt = '';
     if (a.colony) labTxt = state.firstColony ? (priced(COLONY_SHOT_COST) + '⚡') : 'FREE';
+    else if (a.rift) labTxt = avail ? '40⚡' : 'БОСС';
     else if (a.locked) labTxt = '🔒';
     else if (a.id === 'tesla' && !avail) labTxt = 'токамак';
     if (labTxt) {
