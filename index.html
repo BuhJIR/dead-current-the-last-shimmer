@@ -1110,34 +1110,24 @@ function updateWallTurrets(dt) {
   for (var i = 0; i < state.walls.length; i++) {
     var w = state.walls[i], lvl = w.up.turret || 0;
     if (lvl <= 0) continue;
+    if (w.turretCd > 0) w.turretCd -= dt;
+    if (w.turretFlash > 0) w.turretFlash -= dt;
     var s = wallScreen(w), pvx = s.x, pvy = s.y - 22, wx = pvx / scale, wy = pvy / scale;
-    var best = null;
-    if (active) {
-      var range = 6 + lvl * 2.5, bestD = range;
-      for (var e = 0; e < state.enemies.length; e++) {
-        var en = state.enemies[e]; if (!en.alive) continue;
-        var ep = en.body.getPosition(), dx = ep.x - wx, dy = ep.y - wy, d = Math.sqrt(dx * dx + dy * dy);
-        if (d < bestD) { bestD = d; best = en; }
-      }
-    }
-    w.turretAim = best;
+    var range = 6 + lvl * 2.5;
+    var tgt = turretAcquire(w, wx, wy, range, active, dt);
+    w.turretAim = tgt;
+    /* аим стены (пивот у стены), а не через aimTurret (тот считает от города) */
     var desired = -Math.PI / 2;
-    if (best) { var bs = toScreen(best.body.getPosition().x, best.body.getPosition().y); desired = Math.atan2(bs[1] - pvy, bs[0] - pvx); }
+    if (tgt) { var bs = toScreen(tgt.body.getPosition().x, tgt.body.getPosition().y); desired = Math.atan2(bs[1] - pvy, bs[0] - pvx); }
     if (w.turretAng === undefined) w.turretAng = desired;
     var da = desired - w.turretAng; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
     w.turretAng += da * Math.min(1, dt * 8);
-    if (w.turretCd > 0) w.turretCd -= dt;
-    if (w.turretFlash > 0) w.turretFlash -= dt;
-    if (!active || !best || w.turretCd > 0) continue;
-    w.turretCd = Math.max(0.4, 1.3 - lvl * 0.25); w.turretCdMax = w.turretCd; w.turretFlash = 0.12;
-    var bp = best.body.getPosition();
-    var dmg = (3 + lvl * 3) * agg.dmgMult; if (best.shielded) dmg *= 0.5;
-    best.hp -= dmg; best.flashTimer = 0.1;
-    state.lightningArcs.push({ x1: wx, y1: wy, x2: bp.x, y2: bp.y, life: 0.18 });
-    spawnElectricSparks(bp.x, bp.y, '#37e0ff', 4);
-    AUDIO.turret();
-    if (agg.tok >= 2) igniteEnemy(best);
-    if (best.hp <= 0) killEnemy(best);
+    if (active && tgt && w.turretCd <= 0) {
+      var tp = tgt.body.getPosition();
+      if (Math.sqrt((tp.x - wx) * (tp.x - wx) + (tp.y - wy) * (tp.y - wy)) <= range * 1.3) {
+        turretFire(w, lvl, wx, wy, tgt, agg);
+      }
+    }
   }
 }
 
@@ -1171,8 +1161,7 @@ function updateCities(dt) {
     c.feed -= dt * 1.8; if (c.feed < 0) c.feed = 0;
     c.flicker -= dt * 1.3; if (c.flicker < 0) c.flicker = 0;
     if (c.discharge > 0) { c.discharge -= dt * 4; if (c.discharge < 0) c.discharge = 0; }
-    if (c.turretCd > 0) c.turretCd -= dt;
-    if (c.turretFlash > 0) c.turretFlash -= dt;
+    /* turretCd/turretFlash тикаются в updateTurrets (там же вся логика турелей) */
   }
 }
 
@@ -1194,44 +1183,100 @@ function aimTurret(c, best, dt) {
 }
 
 /* Туррели городов: авто-разряд по ближайшему врагу в бою (сила от уровня) */
-function updateTurrets(dt) {
-  if (!state.waveActive || !state.enemies.length) {
-    /* нет боя — цели нет, стволы возвращаются вверх */
-    for (var q = 0; q < state.cities.length; q++) {
-      var cc = state.cities[q];
-      if ((cc.up.turret || 0) > 0) { cc.turretAim = null; aimTurret(cc, null, dt); }
+/* Приоритеты выбора цели турелью */
+var TURRET_MODES = [
+  { id: 0, icon: '🏙', name: 'ГОРОД' },   /* ближе к городам */
+  { id: 1, icon: '☢', name: 'РЕАКТОР' },  /* ближе к базе (кто вот-вот прорвётся) */
+  { id: 2, icon: '⭐', name: 'ТОП' }       /* самый ценный/жирный */
+];
+/* Выбор НОВОЙ цели по режиму (только когда турель свободна). Возвращает врага в радиусе. */
+function pickTurretTarget(wx, wy, range, mode) {
+  var best = null, bestScore = -Infinity, r2 = range * range;
+  for (var e = 0; e < state.enemies.length; e++) {
+    var en = state.enemies[e]; if (!en.alive) continue;
+    var ep = en.body.getPosition(), dx = ep.x - wx, dy = ep.y - wy;
+    if (dx * dx + dy * dy > r2) continue;              /* в радиусе турели */
+    var score;
+    if (mode === 1) { score = ep.y; }                  /* РЕАКТОР: больше y = ближе к базе */
+    else if (mode === 2) { score = (en.def.pts || 0) + en.hp * 0.01; } /* ТОП: ценнее/живучее */
+    else {                                             /* ГОРОД: ближе к любому городу */
+      var md = 1e9;
+      for (var ci = 0; ci < state.cities.length; ci++) {
+        var cwx = state.cities[ci].x / scale, cwy = state.cities[ci].y / scale;
+        var d2 = (cwx - ep.x) * (cwx - ep.x) + (cwy - ep.y) * (cwy - ep.y);
+        if (d2 < md) md = d2;
+      }
+      score = -md;
     }
-    return;
+    if (score > bestScore) { bestScore = score; best = en; }
   }
+  return best;
+}
+/* Захват цели с фиксацией: держим цель, пока жива и в радиусе (или короткий грейс),
+   иначе выбираем новую по приоритету. Это «берёт на мушку» и позволяет ДОБИВАТЬ. */
+function turretAcquire(owner, wx, wy, range, active, dt) {
+  var tgt = owner.turretTarget;
+  if (tgt && !tgt.alive) tgt = null;
+  if (tgt) {
+    var tp = tgt.body.getPosition(), dd = Math.sqrt((tp.x - wx) * (tp.x - wx) + (tp.y - wy) * (tp.y - wy));
+    if (dd > range) {
+      owner.turretGrace = (owner.turretGrace === undefined ? 1.2 : owner.turretGrace) - dt;
+      if (owner.turretGrace <= 0) tgt = null; /* ушла надолго — отпускаем */
+    } else owner.turretGrace = 1.2;
+  }
+  if (!tgt && active) { tgt = pickTurretTarget(wx, wy, range, owner.turretMode || 0); owner.turretGrace = 1.2; }
+  owner.turretTarget = tgt;
+  return tgt;
+}
+/* Урон турели с учётом БРОНЕПЛАСТИН (со стороны турели) и щита */
+function turretHit(target, dmg, fromWX, fromWY, doIgnite) {
+  var tp = target.body.getPosition();
+  if (target.plates) {
+    var pdx = fromWX - tp.x, pdy = fromWY - tp.y;
+    var side = (Math.abs(pdx) > Math.abs(pdy)) ? (pdx > 0 ? 1 : 3) : (pdy > 0 ? 2 : 0);
+    if (target.plates[side] > 0) {           /* есть пластина со стороны турели — гасит удар */
+      target.plates[side]--;
+      spawnPlateDebris(tp.x, tp.y, side, target.def);
+      spawnElectricSparks(tp.x, tp.y, '#37e0ff', 4);
+      target.flashTimer = 0.1;
+      return;
+    }
+  }
+  if (target.shielded) dmg *= 0.5;
+  target.hp -= dmg; target.flashTimer = 0.1;
+  if (doIgnite) igniteEnemy(target);
+  if (target.hp <= 0) killEnemy(target);
+}
+/* Выстрел турели по захваченной цели */
+function turretFire(owner, lvl, wx, wy, tgt, agg) {
+  owner.turretCd = Math.max(0.4, 1.3 - lvl * 0.25);
+  owner.turretCdMax = owner.turretCd; owner.turretFlash = 0.12;
+  var tp = tgt.body.getPosition();
+  state.lightningArcs.push({ x1: wx, y1: wy, x2: tp.x, y2: tp.y, life: 0.18 });
+  spawnElectricSparks(tp.x, tp.y, '#37e0ff', 4);
+  AUDIO.turret();
+  turretHit(tgt, (3 + lvl * 3) * agg.dmgMult, wx, wy, agg.tok >= 2);
+}
+
+function updateTurrets(dt) {
+  var active = state.waveActive && state.enemies.length;
   var agg = cityAgg();
   for (var i = 0; i < state.cities.length; i++) {
     var c = state.cities[i], lvl = c.up.turret || 0;
     if (lvl <= 0) continue;
-    var cwx = c.x / scale, cwy = c.y / scale;         /* город в мировых координатах */
-    var range = 6 + lvl * 2.5;
-    /* ближайшая ЖИВАЯ цель в радиусе — каждый кадр (для аима), null если нет */
-    var best = null, bestD = range;
-    for (var e = 0; e < state.enemies.length; e++) {
-      var en = state.enemies[e]; if (!en.alive) continue;
-      var ep = en.body.getPosition(), dx = ep.x - cwx, dy = ep.y - cwy, d = Math.sqrt(dx * dx + dy * dy);
-      if (d < bestD) { bestD = d; best = en; }
+    if (c.turretCd > 0) c.turretCd -= dt;
+    if (c.turretFlash > 0) c.turretFlash -= dt;
+    var cwx = c.x / scale, cwy = c.y / scale, range = 6 + lvl * 2.5;
+    var tgt = turretAcquire(c, cwx, cwy, range, active, dt);
+    c.turretAim = tgt;
+    aimTurret(c, tgt, dt);
+    if (active && tgt && c.turretCd <= 0) {
+      var tp = tgt.body.getPosition();
+      if (Math.sqrt((tp.x - cwx) * (tp.x - cwx) + (tp.y - cwy) * (tp.y - cwy)) <= range * 1.3) {
+        turretFire(c, lvl, cwx, cwy, tgt, agg);
+        c.flicker = 0.3; c.feed = 0.5;
+      }
     }
-    c.turretAim = best;          /* сбрасывается в null, если цель ушла/умерла */
-    aimTurret(c, best, dt);      /* плавный поворот к цели каждый кадр */
-    if (c.turretCd > 0 || !best) continue; /* целимся, но стреляем только по кулдауну и при цели */
-    c.turretCd = Math.max(0.4, 1.3 - lvl * 0.25);      /* темп растёт с уровнем */
-    c.turretCdMax = c.turretCd;  /* для анимации зарядки спрайта */
-    c.turretFlash = 0.12;        /* кадр «после выстрела» */
-    var bp = best.body.getPosition();
-    var dmg = (3 + lvl * 3) * agg.dmgMult;
-    if (best.shielded) dmg *= 0.5;
-    best.hp -= dmg; best.flashTimer = 0.1;
-    state.lightningArcs.push({ x1: cwx, y1: cwy, x2: bp.x, y2: bp.y, life: 0.18 });
-    spawnElectricSparks(bp.x, bp.y, '#37e0ff', 4);
-    AUDIO.turret();
-    if (agg.tok >= 2) igniteEnemy(best);
-    if (best.hp <= 0) killEnemy(best);
-    c.flicker = 0.3; c.feed = 0.5;
   }
 }
 
@@ -3030,7 +3075,7 @@ function update(dt) {
         var mtypes = ['soldier', 'armor', 'berserker'];
         for (var mk = 0; mk < 2; mk++) {
           var mt = mtypes[Math.floor(Math.random() * mtypes.length)];
-          spawnEnemy(mt, ep.x + (Math.random() - 0.5) * 3, ep.y + def.r + Math.random(), e.level || 0);
+          spawnEnemy(mt, ep.x + (Math.random() - 0.5) * 3, ep.y + e.def.r + Math.random(), e.level || 0);
         }
         spawnHitParticles(ep.x, ep.y, e.def.color, 16);
       }
@@ -3125,6 +3170,7 @@ function update(dt) {
         for (var eix = 0; eix < state.enemies.length; eix++) {
           var enemy = state.enemies[eix];
           if (!enemy.alive) continue;
+          if (enemy.def.special === 'ground') continue; /* наземную технику молнии маяка не достают */
 
           var epos = enemy.body.getPosition();
           var dx = epos.x - pp.x;
